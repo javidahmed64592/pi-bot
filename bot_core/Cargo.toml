@@ -1,0 +1,20 @@
+[package]
+name = "bot_core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+# Serialization for events, commands, and config
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+
+# Async types (Duration, Instant)
+tokio = { workspace = true }
+
+# GPIO types (for RgbColor, pin references)
+rppal = { workspace = true }
+
+# Time utilities
+chrono = { workspace = true }

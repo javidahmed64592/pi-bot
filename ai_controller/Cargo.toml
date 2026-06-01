@@ -1,0 +1,29 @@
+[package]
+name = "ai_controller"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+# Internal dependencies
+bot_core = { path = "../bot_core" }
+
+# Async runtime
+tokio = { workspace = true }
+
+# HTTP client for Ollama API
+reqwest = { workspace = true }
+
+# JSON for LLM requests/responses and memory storage
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Logging
+log = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# Time utilities for memory timestamps
+chrono = { workspace = true }
