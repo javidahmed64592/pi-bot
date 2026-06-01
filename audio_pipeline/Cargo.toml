@@ -1,0 +1,22 @@
+[package]
+name = "audio_pipeline"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+# Async runtime
+tokio = { workspace = true }
+
+# Logging
+log = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# Audio I/O
+cpal = "0.15"
+
+# Vosk for wake word detection + speech-to-text (offline, open source)
+vosk = "0.3"

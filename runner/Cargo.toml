@@ -1,0 +1,27 @@
+[package]
+name = "runner"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "runner"
+path = "src/main.rs"
+
+[dependencies]
+# Internal dependencies
+bot_core = { path = "../bot_core" }
+sensors = { path = "../sensors" }
+actuators = { path = "../actuators" }
+ai_controller = { path = "../ai_controller" }
+audio_pipeline = { path = "../audio_pipeline" }
+
+# Async runtime with full features
+tokio = { workspace = true }
+
+# Logging
+log = { workspace = true }
+env_logger = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }

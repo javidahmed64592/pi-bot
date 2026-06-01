@@ -103,8 +103,8 @@ For quick reference, here are the most common combinations:
 - Ambient noise detection (can tell if music is playing)
 
 **Integration**:
-- Porcupine library continuously monitors for wake phrase
-- When triggered, switches to Whisper-rs for full STT
+- Vosk library continuously monitors for wake phrase using keyword spotting
+- When triggered, switches to full Vosk recognition for STT
 - Emits `AudioEvent::WakeWordDetected`, `AudioEvent::SpeechCaptured(text)`
 
 **Failure Behavior**: Bot loses voice interaction but can still operate visual observation mode
@@ -505,8 +505,8 @@ Bot: "Setting up ambient lighting. I'll stay quiet unless you need me."
 **Goal**: Functional companion with conversation and lighting
 
 ✅ Required:
-- Wake phrase detection (Porcupine)
-- Speech-to-text (Whisper-rs)
+- Wake phrase detection (Vosk keyword spotting)
+- Speech-to-text (Vosk recognition)
 - Text-to-speech (Piper)
 - LLM conversation (Ollama with Qwen2.5 7B)
 - RGB LED control with state-based patterns
