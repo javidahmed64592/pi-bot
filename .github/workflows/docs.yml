@@ -20,6 +20,11 @@ jobs:
       - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libssl-dev pkg-config
+
       - name: Get package name
         id: get_package_name
         run: echo "package_name=$(cargo pkgid | cut -d# -f2 | cut -d@ -f1)" >> $GITHUB_OUTPUT
