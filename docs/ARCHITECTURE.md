@@ -151,8 +151,8 @@ pi-bot/
 │   ├── Cargo.toml
 │   └── src/
 │       ├── lib.rs
-│       ├── wake_word.rs          # Porcupine integration
-│       ├── stt.rs                # Whisper-rs integration
+│       ├── wake_word.rs          # Vosk keyword spotting
+│       ├── stt.rs                # Vosk full recognition
 │       └── tts.rs                # Piper integration
 │
 ├── vision_pipeline/              # Camera ML processing
@@ -301,11 +301,11 @@ impl AudioController {
 
     // Returns events, never controls actuators
     pub async fn check_for_wake_word(&mut self) -> Option<Event> {
-        // Porcupine processing
+        // Vosk keyword spotting
     }
 
     pub async fn capture_speech(&mut self) -> Option<Event> {
-        // Whisper-rs processing
+        // Vosk full recognition
     }
 }
 ```
@@ -536,38 +536,41 @@ impl MemoryService {
 
 **Wake Word Detection** (`wake_word.rs`):
 ```rust
-use porcupine::Porcupine;
+use vosk::{Model, Recognizer};
 
 pub struct WakeWordDetector {
-    porcupine: Porcupine,
+    recognizer: Recognizer,
+    wake_phrase: String,
 }
 
 impl WakeWordDetector {
-    pub fn new() -> Result<Self> {
-        let porcupine = Porcupine::builder()
-            .keyword("hey-bot")
-            .init()?;
-        Ok(Self { porcupine })
+    pub fn new(model_path: &str, wake_phrase: &str) -> Result<Self> {
+        let model = Model::new(model_path)?;
+        let recognizer = Recognizer::new(&model, 16000.0)?;
+        Ok(Self {
+            recognizer,
+            wake_phrase: wake_phrase.to_lowercase(),
+        })
     }
 
     pub async fn listen(&mut self) -> Result<bool> {
         // Continuously monitor audio stream
-        // Return true when wake word detected
+        // Return true when wake phrase detected in transcription
     }
 }
 ```
 
 **Speech-to-Text** (`stt.rs`):
 ```rust
-use whisper_rs::{WhisperContext, FullParams};
+use vosk::{Model, Recognizer};
 
 pub struct SpeechRecognizer {
-    ctx: WhisperContext,
+    recognizer: Recognizer,
 }
 
 impl SpeechRecognizer {
-    pub async fn transcribe(&self, audio: &[f32]) -> Result<String> {
-        // Process audio through Whisper
+    pub async fn transcribe(&self, audio: &[i16]) -> Result<String> {
+        // Process audio through Vosk
         // Return transcribed text
     }
 }
@@ -779,10 +782,13 @@ audio:
   microphone_device: "default"
   speaker_device: "default"
   sample_rate: 16000
-  wake_word: "hey-bot"
-  porcupine_access_key: "YOUR_KEY_HERE"
-  whisper_model: "base.en"
-  piper_voice: "en_US-lessac-medium"
+  vosk:
+    model_path: "models/vosk/vosk-model-small-en-us-0.15"
+    wake_phrase: "hey bot"
+    keyword_mode: true
+  piper:
+    voice: "en_US-lessac-medium"
+    model_path: "models/piper/en_US-lessac-medium.onnx"
 
 # LLM Configuration
 llm:
@@ -989,10 +995,9 @@ async fn health_monitor_task(
 - `opencv` - Camera processing (optional, can use picamera2 via Python)
 
 **Audio**:
-- `porcupine` - Wake word detection
-- `whisper-rs` - Speech-to-text
-- `rodio` / `cpal` - Audio playback
-- `reqwest` - HTTP client for Piper TTS (or direct integration)
+- `vosk` - Wake word detection + speech-to-text (offline)
+- `cpal` - Audio I/O
+- `tokio-process` - Piper TTS subprocess
 
 **AI**:
 - `reqwest` - Ollama API client

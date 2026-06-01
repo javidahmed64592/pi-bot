@@ -63,8 +63,7 @@ The Pi Bot project aims to create an intelligent, interactive AI companion using
 |-----------|---------|--------------|
 | **Ollama** | Local LLM inference | Qwen2.5 7B (fits comfortably in 16GB RAM) |
 | **Piper** | Text-to-speech synthesis | `en_US-lessac-medium` voice |
-| **Porcupine** | Wake word detection | Custom wake phrase: "Hey Bot" |
-| **Whisper (whisper-rs)** | Speech-to-text transcription | `base.en` model (fast, accurate enough) |
+| **Vosk** | Wake word detection + STT | `vosk-model-small-en-us-0.15` (40MB, offline) |
 
 ### Core Libraries & Dependencies
 
@@ -72,8 +71,7 @@ The Pi Bot project aims to create an intelligent, interactive AI companion using
 - `tokio` - Async runtime
 - `rppal` - Raspberry Pi GPIO/PWM/I2C
 - `serde` / `serde_yaml` - Configuration management
-- `whisper-rs` - STT integration
-- `porcupine` - Wake word detection
+- `vosk` - Wake word detection + STT (offline, open source)
 - `reqwest` - HTTP client for Ollama API
 - `rodio` / `cpal` - Audio playback
 
@@ -93,7 +91,7 @@ The Pi Bot project aims to create an intelligent, interactive AI companion using
 **Storage Requirements:**
 - System files: ~20GB
 - Ollama models: ~5GB (Qwen2.5 7B)
-- Whisper model: ~150MB
+- Vosk model: ~40MB
 - Memory database: <100MB
 - Logs and sessions: ~1GB over time
 
@@ -178,7 +176,7 @@ The Pi Bot project aims to create an intelligent, interactive AI companion using
 - **Data ownership**: All conversation logs stored locally
 - **Network isolation**: Can operate without internet (except Ollama model download)
 - **Memory review**: User can inspect/delete memory files
-- **Wake word privacy**: Always-on listening only for wake phrase (Porcupine)
+- **Wake word privacy**: Always-on listening only for wake phrase (Vosk keyword spotting)
 
 ---
 
