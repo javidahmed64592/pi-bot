@@ -786,7 +786,7 @@ audio:
 
 # LLM Configuration
 llm:
-  model: "qwen2.5:7b"
+  model: "qwen2.5:7b-instruct"
   ollama_host: "http://localhost:11434"
   temperature: 0.8
   max_context_length: 4096
