@@ -18,8 +18,5 @@ thiserror = { workspace = true }
 # Audio I/O
 cpal = "0.15"
 
-# Process management for Piper TTS
-tokio-process = "0.2"
-
 # Vosk for wake word detection + speech-to-text (offline, open source)
 vosk = "0.3"
