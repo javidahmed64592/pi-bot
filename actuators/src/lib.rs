@@ -15,12 +15,14 @@
 // ============================================================================
 
 pub mod rgb_led_controller;
+pub mod status_led_controller;
 
 // ============================================================================
 // Re-exports
 // ============================================================================
 
 pub use rgb_led_controller::RgbLedController;
+pub use status_led_controller::StatusLedController;
 
 #[cfg(test)]
 mod tests {
