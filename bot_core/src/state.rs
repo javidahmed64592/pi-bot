@@ -101,8 +101,8 @@ pub struct BotState {
     #[serde(skip, default = "Instant::now")]
     pub last_interaction: Instant,
 
-    /// Current RGB LED brightness (0-100)
-    pub brightness: u8,
+    /// Current RGB LED brightness (0.0-1.0)
+    pub brightness: f32,
     // Optional fields for Phase 2+:
     // pub current_emotion: Emotion,
     // pub system_health: HealthLevel,
@@ -117,7 +117,7 @@ impl BotState {
             lighting_mode: LightingMode::StateBased,
             presence_detected: false,
             last_interaction: Instant::now(),
-            brightness: 50,
+            brightness: 0.5, // Default to 50% brightness
         }
     }
 
@@ -239,7 +239,7 @@ mod tests {
         assert_eq!(state.conversation_state, ConversationState::Ready);
         assert_eq!(state.lighting_mode, LightingMode::StateBased);
         assert!(!state.presence_detected);
-        assert_eq!(state.brightness, 50);
+        assert_eq!(state.brightness, 0.5);
         assert!(state.can_respond());
 
         let now = state.last_interaction;

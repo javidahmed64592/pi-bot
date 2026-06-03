@@ -4,15 +4,23 @@
 //!
 //! Phase 1 components:
 //! - RGB LED controller (PWM-based color mixing, 3 GPIO pins)
-//! - Status LED controllers (2 LEDs for system state)
+//! - LED controller (LEDs for system state)
 //! - Speaker controller (audio output via USB audio device)
 //!
 //! Future phases:
 //! - LCD display controller (16x2 I2C display)
 
-// TODO: Phase 1.3 - Implement RgbLedController with PWM
-// TODO: Phase 1.6 - Implement StatusLedController
-// TODO: Phase 1.10 - Implement SpeakerController for audio playback
+// ============================================================================
+// Module Declarations
+// ============================================================================
+
+pub mod rgb_led_controller;
+
+// ============================================================================
+// Re-exports
+// ============================================================================
+
+pub use rgb_led_controller::RgbLedController;
 
 #[cfg(test)]
 mod tests {

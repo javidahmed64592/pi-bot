@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[[bin]]
+name = "rgb-led-test"
+path = "src/bin/rgb_led_test.rs"
+
 [dependencies]
 # Internal dependencies
 bot_core = { path = "../bot_core" }
@@ -16,6 +20,7 @@ tokio = { workspace = true }
 
 # Logging
 log = { workspace = true }
+env_logger = { workspace = true }
 
 # Error handling
 anyhow = { workspace = true }
