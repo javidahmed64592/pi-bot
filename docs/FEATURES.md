@@ -128,25 +128,6 @@ For quick reference, here are the most common combinations:
 
 ---
 
-#### RFID Reader (RC522) (Security & Identification)
-**Purpose**: Lock/unlock bot and user identification
-
-**Enabled Behaviors**:
-- Lock bot into Do Not Disturb mode (refuses all requests even when woken)
-- Unlock bot and resume normal operations
-- Greet user upon unlocking
-- Store authorized RFID tags for access control
-
-**Integration**:
-- Emits `RfidEvent::TagDetected { tag_id: String }`, `RfidEvent::Authorized`, `RfidEvent::Unauthorized`
-- Continuous scanning for RFID tags
-- Triggers conversation state changes (Silent mode when locked)
-- Stores authorized tag IDs in configuration or memory system
-
-**Failure Behavior**: Bot can still be controlled via wake phrase but loses lock/unlock functionality
-
----
-
 #### DHT11 (Temperature & Humidity)
 **Purpose**: Monitor environmental conditions
 
@@ -248,7 +229,7 @@ For quick reference, here are the most common combinations:
 - Used for fault diagnosis and user awareness of bot availability
 
 **Use Cases**:
-- **DND Mode**: User locks bot with RFID → Red LEDs breathe → Clear visual indicator not to disturb
+- **DND Mode**: Bot enters Silent state → Red LEDs breathe → Clear visual indicator not to disturb
 - **System Error**: Component fails → Red LEDs flash → User knows to check system status
 - **Normal Operation**: Red LEDs off → Green LEDs on → Bot ready for interaction
 

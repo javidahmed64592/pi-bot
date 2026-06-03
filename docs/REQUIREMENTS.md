@@ -23,7 +23,6 @@ The Pi Bot project aims to create an intelligent, interactive AI companion using
 | **Pi Camera Module v3** | Vision for human detection and environmental observation | Phase 2 |
 | **USB Microphone** | Audio input for wake word detection and speech-to-text | Phase 1 |
 | **PIR Motion Sensor** | Presence detection | Phase 1 |
-| **RFID Reader (RC522)** | Lock/unlock bot, user identification | Phase 1 |
 | **DHT11 Sensor** | Temperature and humidity monitoring | Phase 2 |
 
 ### Actuators (Expression & Output)
@@ -112,7 +111,6 @@ The Pi Bot project aims to create an intelligent, interactive AI companion using
 - ✅ Green status LEDs (active states)
 - ✅ Red status LEDs (idle/error states)
 - ✅ PIR presence detection
-- ✅ RFID lock/unlock functionality
 - ✅ Basic memory (conversation history)
 
 **Deliverable**: Bot you can talk to with wake phrase, LED feedback, lock/unlock security, and personality

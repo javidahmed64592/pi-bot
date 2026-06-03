@@ -79,8 +79,8 @@ Every hardware component has a standalone test binary:
     │  - PIR       │  │ AI Controller│  │  - RGB LED   │
     │  - Camera    │  │ ├─ LLM Svc   │  │  - Speaker   │
     │  - Mic       │  │ ├─ Memory    │  │  - Green LEDs│
-    │  - RFID      │  │ └─ State     │  │  - Red LEDs  │
-    │  - DHT11     │  │              │  │  - LCD       │
+    │  - DHT11     │  │ └─ State     │  │  - Red LEDs  │
+    │              │  │              │  │  - LCD       │
     └──────────────┘  └──────────────┘  └──────────────┘
 
     Event Flow:
@@ -114,13 +114,11 @@ pi-bot/
 │       ├── pir_controller.rs
 │       ├── camera_controller.rs  # Vision using picamera2
 │       ├── audio_controller.rs   # Microphone input
-│       ├── rfid_controller.rs    # RFID reader for lock/unlock
 │       ├── dht11_controller.rs   # Temperature/humidity sensor
 │       └── bin/
 │           ├── pir-test.rs
 │           ├── camera-test.rs
 │           ├── mic-test.rs
-│           ├── rfid-test.rs
 │           └── dht11-test.rs
 │
 ├── actuators/                    # Hardware output controllers
@@ -169,7 +167,6 @@ pi-bot/
 │       ├── pir_sensor.rs
 │       ├── camera_sensor.rs
 │       ├── audio_sensor.rs
-│       ├── rfid_sensor.rs
 │       ├── dht11_sensor.rs
 │       ├── rgb_led_actuator.rs
 │       ├── speaker_actuator.rs
@@ -315,7 +312,6 @@ impl AudioController {
 - `PirController` - Motion detection
 - `CameraController` - Vision processing
 - `AudioController` - Wake word + STT
-- `RfidController` - RFID reader for lock/unlock
 - `Dht11Controller` - Environmental sensing
 
 **Test Binaries**: Each controller has standalone test in `src/bin/`
