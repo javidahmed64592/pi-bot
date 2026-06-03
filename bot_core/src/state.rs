@@ -131,6 +131,27 @@ impl BotState {
     pub fn mark_interaction(&mut self) {
         self.last_interaction = Instant::now();
     }
+
+    /// Get the color associated with the current conversation state
+    pub fn state_color(&self) -> RgbColor {
+        match &self.conversation_state {
+            ConversationState::Ready => RgbColor::CYAN, // Calm, ready to respond
+            ConversationState::Observing => RgbColor::YELLOW, // Alert, observing
+            ConversationState::Active(sub) => match sub {
+                ActiveSubState::Listening => RgbColor::LISTENING, // Orange
+                ActiveSubState::Thinking => RgbColor::THINKING,   // Blue
+                ActiveSubState::Speaking => RgbColor::SPEAKING,   // Green
+                ActiveSubState::Learning => RgbColor::LEARNING,   // Purple
+            },
+            ConversationState::Silent => RgbColor::OFF, // DND mode, no light
+        }
+    }
+}
+
+impl Default for BotState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ============================================================================
@@ -233,5 +254,34 @@ mod tests {
         let json = serde_json::to_string(&bot_state).unwrap();
         let parsed: BotState = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.conversation_state, ConversationState::Ready);
+    }
+
+    #[test]
+    fn test_state_colors() {
+        let mut state = BotState::new();
+
+        // Ready state
+        assert_eq!(state.state_color(), RgbColor::CYAN);
+
+        // Observing state
+        state.conversation_state = ConversationState::Observing;
+        assert_eq!(state.state_color(), RgbColor::YELLOW);
+
+        // Active states
+        state.conversation_state = ConversationState::Active(ActiveSubState::Listening);
+        assert_eq!(state.state_color(), RgbColor::LISTENING);
+
+        state.conversation_state = ConversationState::Active(ActiveSubState::Thinking);
+        assert_eq!(state.state_color(), RgbColor::THINKING);
+
+        state.conversation_state = ConversationState::Active(ActiveSubState::Speaking);
+        assert_eq!(state.state_color(), RgbColor::SPEAKING);
+
+        state.conversation_state = ConversationState::Active(ActiveSubState::Learning);
+        assert_eq!(state.state_color(), RgbColor::LEARNING);
+
+        // Silent state
+        state.conversation_state = ConversationState::Silent;
+        assert_eq!(state.state_color(), RgbColor::OFF);
     }
 }
