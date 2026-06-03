@@ -164,6 +164,115 @@ These determine **what you see** (LED color, pattern, brightness):
 
 ---
 
+## Status LEDs (Green & Red)
+
+The bot has **4 additional status LEDs** independent of the main RGB LED: **2 green LEDs** and **2 red LEDs**. These provide quick at-a-glance status indication without interfering with RGB mood/ambient lighting.
+
+### Design Philosophy
+
+**Mutual Exclusivity**: Only one set (green OR red) is active at any time
+- Green LEDs = Bot is active/available
+- Red LEDs = Bot is idle/unavailable/error
+
+This creates clear visual language: "green = go" and "red = stop"
+
+### Green LEDs (Active State Indicators)
+
+**Purpose**: Show bot is ready and available for interaction
+
+| Conversation State | Green LED Pattern |
+|-------------------|-------------------|
+| **Ready** | Solid green (both LEDs) |
+| **Observing** | Solid green (both LEDs) |
+| **Active.Listening** | Breathing green |
+| **Active.Thinking** | Breathing green |
+| **Active.Speaking** | Breathing green |
+| **Active.Learning** | Breathing green |
+| **Silent** | Off (red LEDs active instead) |
+
+**Key Points**:
+- Solid = Ready to interact (waiting for wake phrase)
+- Breathing = Processing something (listening, thinking, speaking)
+- Green LEDs provide feedback even when RGB is in Ambient mode
+- User can quickly glance to see "green = I can talk to it"
+
+### Red LEDs (Idle/Error State Indicators)
+
+**Purpose**: Show bot is unavailable or has an error
+
+| State | Red LED Pattern |
+|-------|-----------------|
+| **Silent (DND)** | Breathing red |
+| **System Error** | Flashing red (fast) |
+| **All other states** | Off (green LEDs active instead) |
+
+**Key Points**:
+- Breathing = Intentional silence (DND mode, RFID locked)
+- Flashing = System error (component failure, critical issue)
+- Red LEDs only active when green LEDs are off
+
+### RFID Lock Integration
+
+The status LEDs integrate with the RFID lock/unlock feature:
+
+**Lock Sequence** (RFID tap):
+1. Bot enters Silent state
+2. Green LEDs turn off
+3. Red LEDs start breathing
+4. Bot refuses all wake phrase requests
+5. Visual cue: "Bot is locked/unavailable"
+
+**Unlock Sequence** (RFID tap):
+1. Bot exits Silent state → Ready state
+2. Red LEDs turn off
+3. Green LEDs turn solid
+4. Bot greets user
+5. Visual cue: "Bot is ready again"
+
+### Status LED + RGB LED Combinations
+
+The status LEDs work **in parallel** with RGB LED states:
+
+| Use Case | Conversation | RGB LED Mode | Status LEDs |
+|----------|-------------|--------------|-------------|
+| **Normal ready** | Ready | StateBased (minimal) | Green solid |
+| **Coding with ambiance** | Ready | Ambient (cool gradient) | Green solid |
+| **Bot listening** | Active.Listening | StateBased (orange breathing) | Green breathing |
+| **Ambient + talking** | Active.Speaking | Ambient (continues) | Green breathing |
+| **Locked with ambiance** | Silent | Ambient (warm) | Red breathing |
+| **Meeting mode** | Silent | Minimal | Red breathing |
+| **System error** | Any | StateBased (red) | Red flashing |
+
+**Benefits**:
+- Status LEDs provide consistent feedback regardless of RGB mode
+- RGB can show mood/ambiance while status LEDs show availability
+- No confusion: green = available, red = unavailable
+- RFID lock status always visible
+
+### Implementation Patterns
+
+**Pattern: Breathing**
+```
+- Smooth fade in/out cycle
+- Period: ~2-3 seconds per cycle
+- Used for: Active processing (green) or intentional DND (red)
+```
+
+**Pattern: Flashing**
+```
+- Quick on/off toggle
+- Period: ~500ms on, 500ms off
+- Used for: System errors (red only)
+```
+
+**Pattern: Solid**
+```
+- Constant brightness
+- Used for: Ready state (green only)
+```
+
+---
+
 ## State Combinations
 
 ### Common Scenarios

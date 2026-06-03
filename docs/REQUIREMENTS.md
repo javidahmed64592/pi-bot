@@ -23,7 +23,7 @@ The Pi Bot project aims to create an intelligent, interactive AI companion using
 | **Pi Camera Module v3** | Vision for human detection and environmental observation | Phase 2 |
 | **USB Microphone** | Audio input for wake word detection and speech-to-text | Phase 1 |
 | **PIR Motion Sensor** | Presence detection | Phase 1 |
-| **2x Ultrasonic Distance Sensors** | Proximity detection and spatial awareness | Phase 2 |
+| **RFID Reader (RC522)** | Lock/unlock bot, user identification | Phase 1 |
 | **DHT11 Sensor** | Temperature and humidity monitoring | Phase 2 |
 
 ### Actuators (Expression & Output)
@@ -32,7 +32,8 @@ The Pi Bot project aims to create an intelligent, interactive AI companion using
 |-----------|---------|-------|
 | **RGB LED** | Primary visual expression (state indication, patterns, ambient lighting) | Phase 1 |
 | **Speaker + Amplifier** | Voice output via text-to-speech | Phase 1 |
-| **2x Status LEDs** | System health indicators (independent of main RGB LED) | Phase 1 |
+| **2x Green LEDs** | Active state indicators (ready, listening, processing) | Phase 1 |
+| **2x Red LEDs** | Idle/error state indicators (idle, DND mode, system errors) | Phase 1 |
 | **LCD Display (16x2)** | Text output for status and messages | Phase 2 |
 
 ### Electronic Components
@@ -108,11 +109,13 @@ The Pi Bot project aims to create an intelligent, interactive AI companion using
 - ✅ LLM conversation (Ollama)
 - ✅ Text-to-speech
 - ✅ RGB LED state indication
-- ✅ Status LEDs
+- ✅ Green status LEDs (active states)
+- ✅ Red status LEDs (idle/error states)
 - ✅ PIR presence detection
+- ✅ RFID lock/unlock functionality
 - ✅ Basic memory (conversation history)
 
-**Deliverable**: Bot you can talk to with wake phrase, LED feedback, and personality
+**Deliverable**: Bot you can talk to with wake phrase, LED feedback, lock/unlock security, and personality
 
 ---
 
@@ -121,7 +124,6 @@ The Pi Bot project aims to create an intelligent, interactive AI companion using
 
 **Components**:
 - ✅ Camera vision (human detection)
-- ✅ Ultrasonic proximity sensing
 - ✅ DHT11 environmental monitoring
 - ✅ LCD display
 - ✅ Passive observation mode

@@ -58,12 +58,12 @@ Every hardware component has a standalone test binary:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         Runner (main.rs)                         │
+│                         Runner (main.rs)                        │
 │  ┌────────────────────────────────────────────────────────────┐ │
-│  │ - Bootstrap channels                                        │ │
-│  │ - Spawn component tasks                                     │ │
-│  │ - Handle shutdown signal (Ctrl+C)                           │ │
-│  │ - Monitor component health                                  │ │
+│  │ - Bootstrap channels                                       │ │
+│  │ - Spawn component tasks                                    │ │
+│  │ - Handle shutdown signal (Ctrl+C)                          │ │
+│  │ - Monitor component health                                 │ │
 │  └────────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
                               │
@@ -77,10 +77,10 @@ Every hardware component has a standalone test binary:
             ↓                 ↓                 ↓
     ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
     │  - PIR       │  │ AI Controller│  │  - RGB LED   │
-    │  - Camera    │  │ ├─ LLM Svc  │  │  - Speaker   │
-    │  - Mic       │  │ ├─ Memory   │  │  - Status    │
-    │  - Ultrasonic│  │ └─ State    │  │  - LCD       │
-    │  - DHT11     │  │              │  │              │
+    │  - Camera    │  │ ├─ LLM Svc   │  │  - Speaker   │
+    │  - Mic       │  │ ├─ Memory    │  │  - Green LEDs│
+    │  - RFID      │  │ └─ State     │  │  - Red LEDs  │
+    │  - DHT11     │  │              │  │  - LCD       │
     └──────────────┘  └──────────────┘  └──────────────┘
 
     Event Flow:
@@ -114,13 +114,13 @@ pi-bot/
 │       ├── pir_controller.rs
 │       ├── camera_controller.rs  # Vision using picamera2
 │       ├── audio_controller.rs   # Microphone input
-│       ├── ultrasonic_controller.rs
+│       ├── rfid_controller.rs    # RFID reader for lock/unlock
 │       ├── dht11_controller.rs   # Temperature/humidity sensor
 │       └── bin/
 │           ├── pir-test.rs
 │           ├── camera-test.rs
 │           ├── mic-test.rs
-│           ├── ultrasonic-test.rs
+│           ├── rfid-test.rs
 │           └── dht11-test.rs
 │
 ├── actuators/                    # Hardware output controllers
@@ -169,11 +169,12 @@ pi-bot/
 │       ├── pir_sensor.rs
 │       ├── camera_sensor.rs
 │       ├── audio_sensor.rs
-│       ├── ultrasonic_sensor.rs
+│       ├── rfid_sensor.rs
 │       ├── dht11_sensor.rs
 │       ├── rgb_led_actuator.rs
 │       ├── speaker_actuator.rs
-│       ├── status_led_actuator.rs
+│       ├── green_led_actuator.rs
+│       ├── red_led_actuator.rs
 │       ├── lcd_actuator.rs
 │       └── health_monitor.rs     # Component health tracking
 │
@@ -314,7 +315,7 @@ impl AudioController {
 - `PirController` - Motion detection
 - `CameraController` - Vision processing
 - `AudioController` - Wake word + STT
-- `UltrasonicController` - Distance measurement
+- `RfidController` - RFID reader for lock/unlock
 - `Dht11Controller` - Environmental sensing
 
 **Test Binaries**: Each controller has standalone test in `src/bin/`
@@ -346,7 +347,8 @@ impl SpeakerController {
 **Key Controllers**:
 - `RgbLedController` - LED control with PWM
 - `SpeakerController` - TTS audio output
-- `StatusLedController` - System health indicators
+- `GreenLedController` - Active state indicators (2 green LEDs)
+- `RedLedController` - Idle/error state indicators (2 red LEDs)
 - `LcdController` - Text display
 
 **Test Binaries**: Each controller has standalone test in `src/bin/`
@@ -761,20 +763,17 @@ print(f"{temp},{humidity}")
 ```yaml
 # GPIO Pin Mappings
 gpio:
-  pir_pin: 17
+  pir_pin: 4
   rgb_pins:
-    red: 18
-    green: 23
-    blue: 24
-  status_led_1: 25
-  status_led_2: 12
-  ultrasonic_1:
-    trigger: 5
-    echo: 6
-  ultrasonic_2:
-    trigger: 22
-    echo: 27
-  dht11_pin: 4
+    red: 17
+    green: 27
+    blue: 22
+  green_led_1: 18
+  green_led_2: 23
+  red_led_1: 24
+  red_led_2: 25
+  rfid_reader_pin: 21
+  dht11_pin: 26
   lcd_i2c_address: 0x27
 
 # Audio Configuration
@@ -1085,7 +1084,7 @@ WantedBy=multi-user.target
 
 ### Phase 3: Enhancement
 
-1. Add remaining sensors (camera, ultrasonic, DHT11)
+1. Add remaining sensors (camera, DHT11)
 2. Implement passive observation mode
 3. Add memory system
 4. Refine personality and patterns

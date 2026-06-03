@@ -128,20 +128,22 @@ For quick reference, here are the most common combinations:
 
 ---
 
-#### Ultrasonic Distance Sensors (2x) (Proximity)
-**Purpose**: Detect nearby objects and distance to user
+#### RFID Reader (RC522) (Security & Identification)
+**Purpose**: Lock/unlock bot and user identification
 
 **Enabled Behaviors**:
-- Know when user is sitting close to desk
-- Detect if something is placed near the bot
-- Trigger "Hey, what's that?" curiosity responses
+- Lock bot into Do Not Disturb mode (refuses all requests even when woken)
+- Unlock bot and resume normal operations
+- Greet user upon unlocking
+- Store authorized RFID tags for access control
 
 **Integration**:
-- Emits `ProximityEvent::ObjectNearby(distance)`, `ProximityEvent::UserCloseBy`
-- Polled at regular intervals
-- Used for conversation context ("I see you're back at your desk")
+- Emits `RfidEvent::TagDetected { tag_id: String }`, `RfidEvent::Authorized`, `RfidEvent::Unauthorized`
+- Continuous scanning for RFID tags
+- Triggers conversation state changes (Silent mode when locked)
+- Stores authorized tag IDs in configuration or memory system
 
-**Failure Behavior**: Bot continues with reduced spatial awareness
+**Failure Behavior**: Bot can still be controlled via wake phrase but loses lock/unlock functionality
 
 ---
 
@@ -211,19 +213,44 @@ For quick reference, here are the most common combinations:
 
 ---
 
-#### Status LEDs (2x) (System Health)
-**Purpose**: Indicate system status independent of main RGB LED
+#### Status LEDs - Green (2x) (Active State Indicators)
+**Purpose**: Indicate bot active states independent of main RGB LED
 
-**States**:
-- **Solid Green**: System healthy, all components operational
-- **Blinking Green**: Processing intensive operation
-- **Blinking Red**: Warning (component failure, high CPU/memory)
-- **Solid Red**: Critical error
+**Patterns**:
+- **Solid Green**: Bot is active and ready (Ready state, awaiting interaction)
+- **Breathing Green**: Bot is processing or listening (Active.Listening, Active.Thinking sub-states)
+- **Off**: Bot is idle or in error state (see Red LEDs)
 
 **Integration**:
-- Receives `StatusCommand::SetHealth(level)`
-- Always powered, even if other components fail
-- Used for debugging hardware issues
+- Receives `StatusCommand::SetGreenLeds(pattern)` with patterns: Solid, Breathing, Off
+- Independent control from RGB LED for parallel visual feedback
+- Always-on during normal operations to indicate bot availability
+
+**Use Cases**:
+- User can quickly glance to see if bot is ready to interact (green = ready)
+- Breathing animation provides visual feedback during processing without affecting RGB mood lighting
+
+**Failure Behavior**: Bot loses status indication but continues normal operation
+
+---
+
+#### Status LEDs - Red (2x) (Idle/Error State Indicators)
+**Purpose**: Indicate bot idle/error states and system health
+
+**Patterns**:
+- **Breathing Red**: Bot is idle or in Do Not Disturb mode (Silent state)
+- **Flashing Red**: System error detected (component failure, critical issue)
+- **Off**: Bot is active (see Green LEDs)
+
+**Integration**:
+- Receives `StatusCommand::SetRedLeds(pattern)` with patterns: Breathing, Flashing, Off
+- Independent control for clear visual separation from active states
+- Used for fault diagnosis and user awareness of bot availability
+
+**Use Cases**:
+- **DND Mode**: User locks bot with RFID → Red LEDs breathe → Clear visual indicator not to disturb
+- **System Error**: Component fails → Red LEDs flash → User knows to check system status
+- **Normal Operation**: Red LEDs off → Green LEDs on → Bot ready for interaction
 
 **Failure Behavior**: N/A (critical component for fault diagnosis)
 
@@ -381,7 +408,7 @@ Bot: "Setting up ambient lighting. I'll stay quiet unless you need me."
 
 **Context**: User sitting at desk for 2 hours, camera detects minimal movement
 
-1. **Bot observes**: PIR + camera show continuous presence, ultrasonic shows user at desk
+1. **Bot observes**: PIR + camera show continuous presence at desk
 2. **Bot decides**: "User might need break reminder"
 3. **LED changes**: Dim green breathing (preparing to speak)
 4. **Bot speaks**: "Hey, you've been sitting for a while, want to get up and stretch?"
@@ -461,7 +488,7 @@ Bot: "Setting up ambient lighting. I'll stay quiet unless you need me."
 
 **Context**: Bot detects user hasn't moved in long time, slouching
 
-1. **Bot observes**: Ultrasonic + camera show user stationary for 3+ hours
+1. **Bot observes**: Camera shows user stationary for 3+ hours
 2. **Bot decides**: Use playful personality to encourage movement
 3. **LED changes**: Orange pulse (getting attention)
 4. **Bot says**: "Get up, lazy!" (playful tone)
@@ -514,10 +541,9 @@ Bot: "Setting up ambient lighting. I'll stay quiet unless you need me."
 - Basic persistent memory (conversation history)
 
 ❌ Optional:
-- Camera vision (can defer)
-- Ultrasonic sensors (can defer)
-- DHT11 environmental monitoring (nice-to-have)
-- LCD display (nice-to-have)
+- Camera vision (can defer to Phase 2)
+- DHT11 environmental monitoring (can defer to Phase 2)
+- LCD display (can defer to Phase 2)
 
 ---
 
@@ -526,8 +552,7 @@ Bot: "Setting up ambient lighting. I'll stay quiet unless you need me."
 
 Required:
 - Camera vision for human detection
-- Ultrasonic proximity sensing
-- DHT11 temperature/humidity
+- DHT11 temperature/humidity monitoring
 - LCD display for status
 - Enhanced memory system with fact extraction
 - Passive observation mode with random conversation initiation
