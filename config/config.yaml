@@ -2,14 +2,13 @@
 gpio:
   # Sensors (inputs)
   pir_pin: 4
-  rfid_reader_pin: 12
   dht11_pin: 26
 
   # Actuators (outputs)
   rgb_pins:
-    red: 17
-    green: 27
-    blue: 22
+    red: 12
+    green: 16
+    blue: 20
   led_pins:
     green_1: 18
     green_2: 25

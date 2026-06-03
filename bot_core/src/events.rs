@@ -19,19 +19,6 @@ pub enum Event {
     NoPresenceSince(Duration),
 
     // ============================================================================
-    // RFID Sensor Events
-    // ============================================================================
-    /// RFID tag detected by RC522 reader
-    /// tag_id: Unique identifier of the RFID tag
-    RfidTagDetected { tag_id: String },
-
-    /// RFID tag is authorized (valid for lock/unlock)
-    RfidAuthorized,
-
-    /// RFID tag is not authorized
-    RfidUnauthorized,
-
-    // ============================================================================
     // Audio Sensor Events (Microphone)
     // ============================================================================
     /// Wake word ("Hey Bot") was detected by Vosk
@@ -84,13 +71,6 @@ impl Event {
         matches!(self, Event::PresenceDetected | Event::NoPresenceSince(_))
     }
 
-    pub fn is_rfid_event(&self) -> bool {
-        matches!(
-            self,
-            Event::RfidTagDetected { .. } | Event::RfidAuthorized | Event::RfidUnauthorized
-        )
-    }
-
     pub fn is_audio_event(&self) -> bool {
         matches!(
             self,
@@ -122,11 +102,6 @@ mod tests {
     fn test_event_creation() {
         let pir_event = Event::PresenceDetected;
         assert!(pir_event.is_pir_event());
-
-        let rfid_event = Event::RfidTagDetected {
-            tag_id: "ABC123".to_string(),
-        };
-        assert!(rfid_event.is_rfid_event());
 
         let audio_event = Event::WakeWordDetected;
         assert!(audio_event.is_audio_event());

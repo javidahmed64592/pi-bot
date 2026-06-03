@@ -48,9 +48,6 @@ pub struct GpioConfig {
     /// PIR motion sensor pin
     pub pir_pin: u8,
 
-    /// RFID reader pin (RC522)
-    pub rfid_reader_pin: u8,
-
     // DHT11 temperature/humidity sensor pin (Phase 2+)
     // pub dht11_pin: u8,
 

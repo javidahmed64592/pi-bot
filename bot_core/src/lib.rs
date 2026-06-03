@@ -46,7 +46,7 @@ pub mod state;
 // ============================================================================
 
 pub use commands::Command;
-pub use config::{load_config, SystemConfig};
+pub use config::{load_config, load_default_config, SystemConfig};
 pub use events::Event;
 pub use state::{
     ActiveSubState, AmbientPattern, BotState, ConversationState, LightingMode, RgbColor,
@@ -157,20 +157,6 @@ mod tests {
         // Silent mode prevents responses
         state.conversation_state = ConversationState::Silent;
         assert!(!state.can_respond());
-    }
-
-    #[test]
-    fn test_rfid_events() {
-        // Test RFID event handling
-        let tag_detected = Event::RfidTagDetected {
-            tag_id: "ABC123".to_string(),
-        };
-        assert!(tag_detected.is_rfid_event());
-
-        let authorized = Event::RfidAuthorized;
-        let unauthorized = Event::RfidUnauthorized;
-        assert!(authorized.is_rfid_event());
-        assert!(unauthorized.is_rfid_event());
     }
 
     #[test]
