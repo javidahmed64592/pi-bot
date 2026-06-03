@@ -186,13 +186,13 @@ mod tests {
 
     #[test]
     fn test_presence_detection() {
-        // Test presence event handling
+        // Test PIR sensor event handling
         let presence = Event::PresenceDetected;
-        assert!(presence.is_presence_event());
+        assert!(presence.is_pir_event());
 
         use std::time::Duration;
         let no_presence = Event::NoPresenceSince(Duration::from_secs(300));
-        assert!(no_presence.is_presence_event());
+        assert!(no_presence.is_pir_event());
     }
 
     #[test]

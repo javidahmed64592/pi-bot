@@ -42,20 +42,26 @@ pub struct SystemConfig {
 /// GPIO pin assignments for all hardware components
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GpioConfig {
+    // ========================================================================
+    // Sensors (inputs)
+    // ========================================================================
     /// PIR motion sensor pin
     pub pir_pin: u8,
 
+    /// RFID reader pin (RC522)
+    pub rfid_reader_pin: u8,
+
+    // DHT11 temperature/humidity sensor pin (Phase 2+)
+    // pub dht11_pin: u8,
+
+    // ========================================================================
+    // Actuators (outputs)
+    // ========================================================================
     /// RGB LED pins (red, green, blue)
     pub rgb_pins: RgbPins,
 
     /// Status LED pins (green and red indicators)
     pub led_pins: LedPins,
-
-    /// RFID reader pin (RC522)
-    pub rfid_reader_pin: u8,
-    // DHT11 temperature/humidity sensor pin (Phase 2+)
-    // pub dht11_pin: u8,
-
     // LCD I2C address (Phase 2+)
     // pub lcd_i2c_address: u8,
 }

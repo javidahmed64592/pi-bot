@@ -1,6 +1,11 @@
 # GPIO Pin Mappings
 gpio:
+  # Sensors (inputs)
   pir_pin: 4
+  rfid_reader_pin: 12
+  dht11_pin: 26
+
+  # Actuators (outputs)
   rgb_pins:
     red: 17
     green: 27
@@ -10,8 +15,6 @@ gpio:
     green_2: 25
     red_1: 23
     red_2: 24
-  dht11_pin: 26
-  rfid_reader_pin: 12
   lcd_i2c_address: 0x27
 
 # Audio Configuration

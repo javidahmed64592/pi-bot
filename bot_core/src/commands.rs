@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Command {
     // ============================================================================
-    // RGB LED Commands
+    // Visual Actuators - RGB LED
     // ============================================================================
     /// Set RGB LED to a solid color
     SetColor(RgbColor),
@@ -26,19 +26,7 @@ pub enum Command {
     LedOff,
 
     // ============================================================================
-    // Audio Commands
-    // ============================================================================
-    /// Speak the given text using Piper TTS
-    /// text: What to say
-    Speak { text: String },
-
-    // emotion: Tone/emotion to use (optional, for future voice modulation)
-    // Or with emotion: Speak { text: String, emotion: Emotion },
-    /// Stop currently playing speech
-    StopSpeaking,
-
-    // ============================================================================
-    // Status LED Commands (Phase 1)
+    // Visual Actuators - Status LEDs
     // ============================================================================
     // Green LEDs = active state indicators, Red LEDs = idle/error state indicators
     // Only one set (green OR red) should be active at any time
@@ -51,19 +39,8 @@ pub enum Command {
     SetRedLeds(StatusLedPattern),
 
     // ============================================================================
-    // RFID Commands (Phase 1)
+    // Visual Actuators - Display (Phase 2+)
     // ============================================================================
-    /// Lock the bot (enter Silent mode, activate red LEDs)
-    LockBot,
-
-    /// Unlock the bot (exit Silent mode, activate green LEDs)
-    UnlockBot,
-
-    // ============================================================================
-    // Display Commands (Phase 2+)
-    // ============================================================================
-    // Hint: These will go to the LCD display controller
-
     // Show text on the LCD display (16x2 characters)
     // line1: Text for first line (max 16 chars)
     // line2: Text for second line (max 16 chars)
@@ -75,8 +52,26 @@ pub enum Command {
     // ClearDisplay,
 
     // ============================================================================
-    // AI Controller State Commands
+    // Audio Actuators - Speaker/TTS
     // ============================================================================
+    /// Speak the given text using Piper TTS
+    /// text: What to say
+    Speak { text: String },
+
+    // emotion: Tone/emotion to use (optional, for future voice modulation)
+    // Or with emotion: Speak { text: String, emotion: Emotion },
+    /// Stop currently playing speech
+    StopSpeaking,
+
+    // ============================================================================
+    // System State Commands
+    // ============================================================================
+    /// Lock the bot (enter Silent mode, activate red LEDs)
+    LockBot,
+
+    /// Unlock the bot (exit Silent mode, activate green LEDs)
+    UnlockBot,
+
     /// Tell audio pipeline to start listening for speech
     /// (after wake word detected)
     StartListening,

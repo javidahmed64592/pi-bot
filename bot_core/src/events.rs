@@ -9,7 +9,7 @@ use std::time::Duration;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Event {
     // ============================================================================
-    // Presence & Motion Events
+    // PIR Sensor Events
     // ============================================================================
     /// PIR sensor detected motion/presence in the room
     PresenceDetected,
@@ -19,7 +19,20 @@ pub enum Event {
     NoPresenceSince(Duration),
 
     // ============================================================================
-    // Audio Events
+    // RFID Sensor Events
+    // ============================================================================
+    /// RFID tag detected by RC522 reader
+    /// tag_id: Unique identifier of the RFID tag
+    RfidTagDetected { tag_id: String },
+
+    /// RFID tag is authorized (valid for lock/unlock)
+    RfidAuthorized,
+
+    /// RFID tag is not authorized
+    RfidUnauthorized,
+
+    // ============================================================================
+    // Audio Sensor Events (Microphone)
     // ============================================================================
     /// Wake word ("Hey Bot") was detected by Vosk
     /// This triggers transition from Ready → Active state
@@ -34,23 +47,8 @@ pub enum Event {
     AmbientNoiseLevel(u8),
 
     // ============================================================================
-    // RFID Events (Phase 1)
+    // Camera Sensor Events (Phase 2+)
     // ============================================================================
-    /// RFID tag detected by RC522 reader
-    /// tag_id: Unique identifier of the RFID tag
-    RfidTagDetected { tag_id: String },
-
-    /// RFID tag is authorized (valid for lock/unlock)
-    RfidAuthorized,
-
-    /// RFID tag is not authorized
-    RfidUnauthorized,
-
-    // ============================================================================
-    // Vision Events (Phase 2+)
-    // ============================================================================
-    // Hint: These will come from camera_controller in future phases
-    // For now, you can leave these commented out or add them as placeholders
     /// Camera detected a human face/person
     /// confidence: 0.0-1.0 representing detection confidence
     // TODO: Add this variant with named field
@@ -66,10 +64,8 @@ pub enum Event {
     // ObjectChange { description: String },
 
     // ============================================================================
-    // Environmental Events (Phase 2+)
+    // Environmental Sensor Events (Phase 2+)
     // ============================================================================
-    // Hint: These come from DHT11 sensor
-
     /// Temperature and humidity reading from DHT11 sensor
     // TODO: Add this variant with named fields for temp (f32) and humidity (f32)
     // EnvironmentReading { temp: f32, humidity: f32 },
@@ -77,8 +73,6 @@ pub enum Event {
     // ============================================================================
     // System Events
     // ============================================================================
-    // Hint: These come from health monitoring and error detection
-
     /// Health status of a component changed
     /// component: name of the component ("pir", "camera", "audio", etc.)
     /// healthy: true if component is working, false if failed
@@ -86,12 +80,8 @@ pub enum Event {
 }
 
 impl Event {
-    pub fn is_presence_event(&self) -> bool {
+    pub fn is_pir_event(&self) -> bool {
         matches!(self, Event::PresenceDetected | Event::NoPresenceSince(_))
-    }
-
-    pub fn is_audio_event(&self) -> bool {
-        matches!(self, Event::WakeWordDetected | Event::SpeechCaptured(_))
     }
 
     pub fn is_rfid_event(&self) -> bool {
@@ -101,18 +91,22 @@ impl Event {
         )
     }
 
-    // pub fn is_vision_event(&self) -> bool {
+    pub fn is_audio_event(&self) -> bool {
+        matches!(
+            self,
+            Event::WakeWordDetected | Event::SpeechCaptured(_) | Event::AmbientNoiseLevel(_)
+        )
+    }
+
+    // pub fn is_camera_event(&self) -> bool {
     //     matches!(
     //         self,
     //         Event::HumanDetected { .. } | Event::DeskOccupied | Event::ObjectChange { .. }
     //     )
     // }
 
-    // pub fn is_environment_event(&self) -> bool {
-    //     matches!(
-    //         self,
-    //         Event::EnvironmentReading { .. } | Event::ProximityChanged { .. }
-    //     )
+    // pub fn is_environmental_event(&self) -> bool {
+    //     matches!(self, Event::EnvironmentReading { .. })
     // }
 
     pub fn is_system_event(&self) -> bool {
@@ -126,10 +120,17 @@ mod tests {
 
     #[test]
     fn test_event_creation() {
-        let presence_event = Event::PresenceDetected;
-        assert!(presence_event.is_presence_event());
+        let pir_event = Event::PresenceDetected;
+        assert!(pir_event.is_pir_event());
+
+        let rfid_event = Event::RfidTagDetected {
+            tag_id: "ABC123".to_string(),
+        };
+        assert!(rfid_event.is_rfid_event());
+
         let audio_event = Event::WakeWordDetected;
         assert!(audio_event.is_audio_event());
+
         let system_event = Event::ComponentHealth {
             component: "camera".to_string(),
             healthy: true,
