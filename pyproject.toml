@@ -26,6 +26,9 @@ dev = [
 [project.urls]
 repository = "https://github.com/javidahmed64592/pi-bot"
 
+[tool.hatch.metadata]
+allow-direct-references = true
+
 [tool.hatch.build]
 include = [
   "pi_bot_utils/**",
