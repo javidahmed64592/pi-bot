@@ -7,7 +7,7 @@ license.workspace = true
 [dependencies]
 # Internal dependencies
 bot_core = { path = "../bot_core" }
-audio_pipeline = { path = "../audio_pipeline" }
+audio_pipeline = { path = "../audio_pipeline", optional = true }
 
 # GPIO for PIR sensor
 rppal = { workspace = true }
@@ -25,3 +25,17 @@ env_logger = { workspace = true }
 # Error handling
 anyhow = { workspace = true }
 thiserror = { workspace = true }
+
+[features]
+# Feature for audio functionality (requires Vosk library)
+audio = ["audio_pipeline"]
+
+[[bin]]
+name = "wake_word_test"
+path = "src/bin/wake_word_test.rs"
+required-features = ["audio"]
+
+[[bin]]
+name = "stt_test"
+path = "src/bin/stt_test.rs"
+required-features = ["audio"]

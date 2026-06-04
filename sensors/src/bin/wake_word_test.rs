@@ -5,7 +5,8 @@
 //!
 //! # Usage
 //! ```bash
-//! cargo run --bin wake-word-test
+//! # Build with feature flag (requires Vosk library)
+//! cargo run --bin wake_word_test --features sensors/audio
 //! # Say "hey bot" and verify detection
 //! ```
 //!
