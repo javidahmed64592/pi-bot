@@ -266,9 +266,9 @@ impl LlmService {
                 // Provide more context on timeout errors
                 let error_msg = e.to_string();
                 if error_msg.contains("timeout") {
-                    LlmError::ApiRequestError(format!(
-                        "Request timed out after 180s. Model may be too slow on this hardware. Consider using a smaller model like qwen2.5:3b"
-                    ))
+                    LlmError::ApiRequestError(
+                        "Request timed out after 180s. Model may be too slow on this hardware. Consider using a smaller model like qwen2.5:3b".to_string()
+                    )
                 } else {
                     LlmError::ApiRequestError(format!("HTTP request failed: {}", error_msg))
                 }

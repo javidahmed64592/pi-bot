@@ -222,7 +222,7 @@ impl SpeakerController {
     /// true if audio is playing, false otherwise
     pub fn is_playing(&self) -> bool {
         let current = self.current_sink.lock().unwrap();
-        current.as_ref().map_or(false, |sink| !sink.empty())
+        current.as_ref().is_some_and(|sink| !sink.empty())
     }
 
     /// Wait for current playback to finish

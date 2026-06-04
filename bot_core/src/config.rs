@@ -83,7 +83,7 @@ pub struct LedPins {
     pub red_2: u8,
 }
 
-/// Ultrasonic sensor pin configuration (trigger and echo)
+// Ultrasonic sensor pin configuration (trigger and echo)
 // TODO: Implement this struct for Phase 2
 // #[derive(Debug, Clone, Serialize, Deserialize)]
 // pub struct UltrasonicPins {

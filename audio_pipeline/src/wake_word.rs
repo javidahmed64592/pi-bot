@@ -334,6 +334,7 @@ impl WakeWordDetector {
     /// Handles two modes:
     /// 1. WakeWord mode: Detects wake phrase using keyword spotting
     /// 2. SpeechCapture mode: Transcribes full speech after wake word
+    #[allow(clippy::too_many_arguments)]
     fn audio_processing_thread(
         audio_rx: mpsc::Receiver<AudioFrame>,
         recognizer: Arc<Mutex<vosk::Recognizer>>,
@@ -367,7 +368,7 @@ impl WakeWordDetector {
                     frame_count += 1;
 
                     // Log every 50 frames (~1 second at typical buffer sizes)
-                    if frame_count % 50 == 0 {
+                    if frame_count.is_multiple_of(50) {
                         log::debug!("Processed {} audio frames", frame_count);
                     }
 
@@ -424,7 +425,7 @@ impl WakeWordDetector {
 
                     // Process when we have enough samples (~100ms at 16kHz)
                     if buffer.len() >= 1600 {
-                        let samples_to_process: Vec<i16> = buffer.drain(..).collect();
+                        let samples_to_process: Vec<i16> = std::mem::take(&mut buffer);
 
                         // Check current mode
                         let current_mode = *mode.lock().unwrap();

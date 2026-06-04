@@ -25,6 +25,7 @@ use tokio::sync::{broadcast, mpsc};
 /// Routes each command to the appropriate actuator channel(s).
 /// Some commands (like state-based commands) may be broadcast to multiple actuators.
 /// Exits gracefully on shutdown signal.
+#[allow(clippy::too_many_arguments)]
 pub async fn run_command_distributor(
     mut controller_cmd_rx: mpsc::Receiver<Command>,
     rgb_led_tx: mpsc::Sender<Command>,
