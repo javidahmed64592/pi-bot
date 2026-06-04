@@ -1,31 +1,29 @@
-//! # sensors
+//! Hardware Input Controllers
 //!
-//! Hardware input controllers that emit Events.
+//! Controllers that emit events from physical sensors.
+//! All controllers follow event-driven architecture: read hardware → emit event.
 //!
-//! Phase 1 components:
-//! - PIR sensor (motion detection)
-//! - Audio controller (microphone input for STT)
+//! ## Phase 1 (Completed)
+//! - `PirSensorController` - Motion detection with presence timeout
+//! - `AudioController` - Microphone input for wake word and STT
 //!
-//! Future phases:
-//! - Camera controller (visual presence detection)
-//! - Ultrasonic sensors (proximity detection)
-//! - DHT11 controller (temperature/humidity)
+//! ## Future Phases
+//! - Camera controller - Visual presence detection (Phase 2)
+//! - DHT11 controller - Temperature/humidity (Phase 2)
 
 // ============================================================================
 // Module Declarations
 // ============================================================================
 
 pub mod audio_controller;
+pub mod pir_sensor_controller;
 
 // ============================================================================
 // Re-exports
 // ============================================================================
 
 pub use audio_controller::{AudioController, AudioError};
-
-// TODO: Phase 1.5 - Implement PirSensorController
-// TODO: Phase 2 - Implement CameraController
-// TODO: Phase 2 - Implement Dht11Controller
+pub use pir_sensor_controller::PirSensorController;
 
 #[cfg(test)]
 mod tests {
