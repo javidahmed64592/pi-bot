@@ -1,6 +1,6 @@
 <mxfile host="app.diagrams.net" pages="2">
   <diagram name="Page-1" id="Yod6iNHpYOO0JZkHFtGM">
-    <mxGraphModel dx="1411" dy="757" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+    <mxGraphModel dx="1411" dy="797" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -109,7 +109,7 @@
     </mxGraphModel>
   </diagram>
   <diagram id="fcGqry_swgO0lO7DpcWY" name="State Machine">
-    <mxGraphModel dx="672" dy="360" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+    <mxGraphModel dx="672" dy="380" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -128,10 +128,10 @@
             <mxPoint x="110" y="59.97" as="targetPoint" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="kiTvNUKinqMyw2rXmcuL-11" edge="1" parent="1" source="kiTvNUKinqMyw2rXmcuL-1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.25;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;startArrow=classic;startFill=1;" target="kiTvNUKinqMyw2rXmcuL-4" value="Timeout if not present at desk (PIR)">
+        <mxCell id="kiTvNUKinqMyw2rXmcuL-11" edge="1" parent="1" source="kiTvNUKinqMyw2rXmcuL-1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;startArrow=none;startFill=0;" target="kiTvNUKinqMyw2rXmcuL-4" value="Timeout if not present at desk (PIR)">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="60" y="40" />
+              <mxPoint x="80" y="40" />
               <mxPoint x="600" y="40" />
             </Array>
           </mxGeometry>
@@ -169,6 +169,14 @@
         </mxCell>
         <mxCell id="4Eqs6hhkJ5Umo6fyFor_-6" edge="1" parent="1" source="kiTvNUKinqMyw2rXmcuL-4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.75;exitDx=0;exitDy=0;entryX=1;entryY=0.75;entryDx=0;entryDy=0;" target="kiTvNUKinqMyw2rXmcuL-3" value="Wake word">
           <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="Pd1ANhCsBKbVotZuLeGj-1" edge="1" parent="1" source="kiTvNUKinqMyw2rXmcuL-4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.75;exitY=0;exitDx=0;exitDy=0;entryX=0.25;entryY=0;entryDx=0;entryDy=0;" target="kiTvNUKinqMyw2rXmcuL-1" value="Returned to desk, bot listening again">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="620" y="20" />
+              <mxPoint x="60" y="20" />
+            </Array>
+          </mxGeometry>
         </mxCell>
         <mxCell id="kiTvNUKinqMyw2rXmcuL-4" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e51400;fontColor=#ffffff;strokeColor=#B20000;" value="Silent&lt;div&gt;(breathing)&lt;/div&gt;" vertex="1">
           <mxGeometry height="40" width="80" x="560" y="79.97" as="geometry" />
