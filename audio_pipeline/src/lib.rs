@@ -7,8 +7,11 @@
 //! - stt.rs: Vosk speech-to-text (same engine as wake word)
 //! - tts.rs: Piper text-to-speech synthesis (via tokio::process::Command)
 
-// TODO: Phase 1.9 - Implement wake_word.rs with Vosk keyword spotting
-// TODO: Phase 1.9 - Implement stt.rs with Vosk full recognition
+pub mod wake_word;
+
+pub use wake_word::{WakeWordDetector, WakeWordError};
+
+// TODO: Phase 1.7 - Implement stt.rs with Vosk full recognition
 // TODO: Phase 1.10 - Implement tts.rs with Piper (use tokio::process::Command)
 
 #[cfg(test)]
