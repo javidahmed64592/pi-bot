@@ -19,18 +19,18 @@ async fn main() -> Result<()> {
 
     log::info!("Pi Bot companion system starting...");
 
-    // TODO: Phase 1.4 - Load config
-    // TODO: Phase 1.4 - Create channels
-    // TODO: Phase 1.4 - Spawn controller task
-    // TODO: Phase 1.5 - Spawn PIR sensor task
-    // TODO: Phase 1.6 - Spawn RGB LED task
-    // TODO: Phase 1.6 - Spawn status LED tasks
-    // TODO: Phase 1.11 - Spawn wake word task
-    // TODO: Phase 1.11 - Spawn STT task
-    // TODO: Phase 1.11 - Spawn TTS task
-    // TODO: Phase 1.12 - Implement graceful shutdown
+    // Phase 1.12 - Main system integration
+    // Components ready:
+    // - PIR sensor with timeout detection
+    // - RGB LED with pattern support
+    // - Status LEDs with PWM brightness
+    // - Audio pipeline (wake word, STT, TTS)
+    // - LLM service with Ollama
+    // - Memory service with session persistence
+    //
+    // Next: Wire all components via channels and spawn tasks
 
-    log::info!("All tasks spawned, waiting for shutdown signal...");
+    log::info!("System ready. Awaiting shutdown signal...");
 
     // Placeholder: Wait for Ctrl+C
     tokio::signal::ctrl_c().await?;

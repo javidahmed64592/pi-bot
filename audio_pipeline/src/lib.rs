@@ -1,22 +1,20 @@
-//! # audio_pipeline
+//! Audio Processing Pipeline
 //!
-//! Speech-to-text and text-to-speech pipeline.
+//! Speech recognition and synthesis for conversational AI.
 //!
-//! Components:
-//! - wake_word.rs: Vosk-based wake word detection + speech-to-text
-//!   - Dual mode operation: WakeWord detection → Speech capture
+//! ## Components
+//! - `WakeWordDetector` - Vosk-based wake word detection + speech-to-text
+//!   - Dual mode: Wake word detection → Speech capture
 //!   - Automatic mode switching after wake word detected
 //!   - Configurable timeouts and silence detection
-//! - tts.rs: Piper text-to-speech synthesis (TODO: Phase 1.8)
+//! - `PiperTts` - Text-to-speech synthesis via Piper engine
 //!
 //! ## Wake Word + STT Flow
 //!
-//! 1. WakeWord Mode: Listens for configured wake phrase (e.g., "hey")
-//! 2. When detected: Automatically switches to SpeechCapture mode
-//! 3. SpeechCapture Mode: Transcribes user speech until:
-//!    - Silence detected (configurable threshold)
-//!    - Timeout reached (configurable limit)
-//! 4. Returns to WakeWord mode with captured transcription
+//! 1. **WakeWord Mode**: Listens for configured phrase (e.g., "hey")
+//! 2. **Detection**: Switches to SpeechCapture mode automatically
+//! 3. **SpeechCapture Mode**: Transcribes until silence or timeout
+//! 4. **Return**: Loops back to WakeWord mode with transcription
 
 pub mod tts;
 pub mod wake_word;

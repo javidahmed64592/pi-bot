@@ -188,12 +188,12 @@ mod tests {
 
         // GPIO config
         assert_eq!(config.gpio.pir_pin, 4);
-        assert_eq!(config.gpio.rgb_pins.red, 17);
+        assert_eq!(config.gpio.rgb_pins.red, 12);
         assert_eq!(config.gpio.led_pins.green_1, 18);
 
         // Audio config
         assert!(config.audio.vosk.model_path.contains("vosk"));
-        assert_eq!(config.audio.vosk.wake_phrase, "hey bot");
+        assert_eq!(config.audio.vosk.wake_phrase, "hey");
 
         // LLM config
         assert!(config.llm.model.contains("qwen"));

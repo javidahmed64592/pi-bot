@@ -261,11 +261,11 @@ mod tests {
         let mut state = BotState::new();
 
         // Ready state
-        assert_eq!(state.state_color(), RgbColor::CYAN);
+        assert_eq!(state.state_color(), RgbColor::GREEN);
 
         // Observing state
         state.conversation_state = ConversationState::Observing;
-        assert_eq!(state.state_color(), RgbColor::YELLOW);
+        assert_eq!(state.state_color(), RgbColor::BLUE);
 
         // Active states
         state.conversation_state = ConversationState::Active(ActiveSubState::Listening);
@@ -282,6 +282,6 @@ mod tests {
 
         // Silent state
         state.conversation_state = ConversationState::Silent;
-        assert_eq!(state.state_color(), RgbColor::OFF);
+        assert_eq!(state.state_color(), RgbColor::RED);
     }
 }

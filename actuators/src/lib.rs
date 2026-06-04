@@ -1,14 +1,15 @@
-//! # actuators
+//! Hardware Output Controllers
 //!
-//! Hardware output controllers that consume Commands.
+//! Controllers that consume commands and control physical hardware.
+//! All controllers follow command-driven architecture: receive command → control hardware.
 //!
-//! Phase 1 components:
-//! - RGB LED controller (PWM-based color mixing, 3 GPIO pins)
-//! - LED controller (LEDs for system state)
-//! - Speaker controller (audio output via USB audio device)
+//! ## Phase 1 (Completed)
+//! - `RgbLedController` - PWM-based RGB LED with color patterns
+//! - `StatusLedController` - Multi-LED status indicators with brightness control
+//! - `SpeakerController` - Audio playback via Piper TTS
 //!
-//! Future phases:
-//! - LCD display controller (16x2 I2C display)
+//! ## Future Phases
+//! - LCD display controller - 16x2 I2C text display (Phase 2)
 
 // ============================================================================
 // Module Declarations
