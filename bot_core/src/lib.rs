@@ -46,7 +46,7 @@ pub mod state;
 // ============================================================================
 
 pub use commands::Command;
-pub use config::{load_config, load_default_config, SystemConfig};
+pub use config::{load_config, load_default_config, SttConfig, SystemConfig};
 pub use events::Event;
 pub use state::{
     ActiveSubState, AmbientPattern, BotState, ConversationState, LightingMode, RgbColor,

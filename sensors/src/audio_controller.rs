@@ -76,6 +76,7 @@ impl AudioController {
             &audio_config.vosk.model_path,
             &audio_config.vosk.wake_phrase,
             audio_config.sample_rate,
+            audio_config.vosk.stt.clone(),
         )
         .map_err(|e| AudioError::WakeWordInitError(e.to_string()))?;
 

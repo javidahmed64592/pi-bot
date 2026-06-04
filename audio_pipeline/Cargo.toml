@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+# Workspace crates
+bot_core = { path = "../bot_core" }
+
 # Async runtime
 tokio = { workspace = true }
 

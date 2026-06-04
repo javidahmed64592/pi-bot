@@ -137,6 +137,7 @@ name = "audio_pipeline"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bot_core",
  "cpal",
  "hound",
  "log",

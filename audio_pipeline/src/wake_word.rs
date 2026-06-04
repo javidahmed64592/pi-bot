@@ -30,6 +30,7 @@
 //! ```
 
 use anyhow::Result;
+use bot_core::SttConfig;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -148,6 +149,9 @@ pub struct WakeWordDetector {
 
     /// Timestamp of last speech detected (for silence detection)
     last_speech_time: Arc<Mutex<Option<std::time::Instant>>>,
+
+    /// STT configuration (timeouts, thresholds)
+    stt_config: SttConfig,
 }
 
 impl WakeWordDetector {
@@ -157,6 +161,7 @@ impl WakeWordDetector {
     /// * `model_path` - Path to Vosk model directory (e.g., "models/vosk/vosk-model-small-en-us-0.15")
     /// * `wake_phrase` - Wake phrase to detect (e.g., "hey bot")
     /// * `sample_rate` - Audio sample rate in Hz (typically 16000)
+    /// * `stt_config` - Speech-to-text configuration (timeouts, thresholds)
     ///
     /// # Returns
     /// A new WakeWordDetector instance ready to start listening
@@ -165,7 +170,12 @@ impl WakeWordDetector {
     /// Returns error if:
     /// - Vosk model cannot be loaded
     /// - Audio device initialization fails
-    pub fn new(model_path: &str, wake_phrase: &str, sample_rate: u32) -> Result<Self> {
+    pub fn new(
+        model_path: &str,
+        wake_phrase: &str,
+        sample_rate: u32,
+        stt_config: SttConfig,
+    ) -> Result<Self> {
         log::info!("Initializing wake word detector");
         log::info!("  Model path: {}", model_path);
         log::info!("  Wake phrase: '{}'", wake_phrase);
@@ -206,6 +216,7 @@ impl WakeWordDetector {
             captured_speech: Arc::new(Mutex::new(None)),
             speech_start_time: Arc::new(Mutex::new(None)),
             last_speech_time: Arc::new(Mutex::new(None)),
+            stt_config,
         })
     }
 
@@ -272,6 +283,7 @@ impl WakeWordDetector {
         let captured_speech = Arc::clone(&self.captured_speech);
         let speech_start_time = Arc::clone(&self.speech_start_time);
         let last_speech_time = Arc::clone(&self.last_speech_time);
+        let stt_config = self.stt_config.clone();
 
         let processing_thread = thread::spawn(move || {
             Self::audio_processing_thread(
@@ -288,6 +300,7 @@ impl WakeWordDetector {
                 captured_speech,
                 speech_start_time,
                 last_speech_time,
+                stt_config,
             );
         });
 
@@ -335,16 +348,18 @@ impl WakeWordDetector {
         captured_speech: Arc<Mutex<Option<String>>>,
         speech_start_time: Arc<Mutex<Option<std::time::Instant>>>,
         last_speech_time: Arc<Mutex<Option<std::time::Instant>>>,
+        stt_config: SttConfig,
     ) {
         let mut buffer: Vec<i16> = Vec::with_capacity(8000);
         let mut frame_count = 0u64;
         let mut speech_buffer = Vec::new(); // For accumulating speech in capture mode
         let mut last_partial = String::new(); // Track last partial result for silence detection
 
-        // STT configuration (these should come from config eventually)
-        let capture_timeout = std::time::Duration::from_secs_f32(10.0);
-        let silence_threshold = std::time::Duration::from_secs_f32(1.5);
-        let min_speech_duration = std::time::Duration::from_secs_f32(0.5);
+        // STT configuration from config.yaml
+        let capture_timeout = std::time::Duration::from_secs_f32(stt_config.capture_timeout);
+        let silence_threshold = std::time::Duration::from_secs_f32(stt_config.silence_threshold);
+        let min_speech_duration =
+            std::time::Duration::from_secs_f32(stt_config.min_speech_duration);
 
         while !stop_flag.load(Ordering::Relaxed) {
             match audio_rx.recv_timeout(std::time::Duration::from_millis(100)) {
