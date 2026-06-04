@@ -43,8 +43,10 @@ pub async fn run_audio_sensor(
 
     // Spawn blocking thread for audio processing
     let config_clone = config.clone();
+    let event_tx_clone = event_tx.clone();
     let audio_thread = thread::spawn(move || {
         let config = config_clone;
+        let event_tx = event_tx_clone;
 
         // Initialize audio controller
         let mut audio = match AudioController::new(&config, "Audio Sensor") {
@@ -65,6 +67,13 @@ pub async fn run_audio_sensor(
             "[Audio Sensor Task] Listening for wake word: '{}'",
             config.audio.vosk.wake_phrase
         );
+
+        // Send SystemReady event to indicate heavy initialization (Vosk loading) is complete
+        if event_tx.blocking_send(Event::SystemReady).is_err() {
+            log::error!("[Audio Sensor Task] Failed to send SystemReady event");
+        } else {
+            log::info!("[Audio Sensor Task] System ready - Vosk model loaded");
+        }
 
         // Poll interval (check every 50ms for low latency)
         let poll_interval = Duration::from_millis(50);

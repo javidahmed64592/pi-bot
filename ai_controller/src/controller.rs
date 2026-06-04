@@ -210,6 +210,7 @@ async fn handle_event(
         Event::WakeWordDetected => handle_wake_word(state, cmd_tx).await?,
         Event::SpeechCaptured(text) => handle_speech_captured(text, state, cmd_tx).await?,
         Event::SpeechComplete => handle_speech_complete(state, cmd_tx).await?,
+        Event::SystemReady => handle_system_ready(state, cmd_tx).await?,
         Event::PresenceDetected => handle_presence_detected(state, cmd_tx).await?,
         Event::NoPresenceSince(duration) => handle_no_presence(duration, state, cmd_tx).await?,
         Event::AmbientNoiseLevel(level) => handle_ambient_noise(level, state, cmd_tx).await?,
@@ -271,6 +272,21 @@ async fn handle_speech_complete(
             state.bot_state.conversation_state
         );
     }
+
+    Ok(())
+}
+
+/// Handle system ready event (heavy initialization complete)
+async fn handle_system_ready(
+    state: &mut ControllerState,
+    cmd_tx: &mpsc::Sender<Command>,
+) -> Result<()> {
+    info!("System ready - transitioning from loading to ready state");
+
+    // Ensure we're in Ready state and send state commands
+    // This will transition LEDs from loading (red breathing) to ready (green breathing)
+    state.bot_state.conversation_state = ConversationState::Ready;
+    send_state_commands(cmd_tx, state).await?;
 
     Ok(())
 }

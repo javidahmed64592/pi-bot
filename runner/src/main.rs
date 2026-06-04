@@ -19,7 +19,7 @@ mod rgb_led_actuator;
 mod speaker_actuator;
 
 use anyhow::Result;
-use bot_core::{load_config, Command, Event};
+use bot_core::{load_config, Command, Event, StatusLedPattern};
 use tokio::sync::{broadcast, mpsc};
 
 #[tokio::main]
@@ -65,7 +65,57 @@ async fn main() -> Result<()> {
     log::info!("Channels initialized");
 
     // ========================================================================
-    // 3. Spawn Sensor Tasks
+    // 3. Spawn LED Actuator Tasks First (for loading indicator)
+    // ========================================================================
+
+    log::info!("Spawning LED actuator tasks...");
+
+    // RGB LED Actuator Task
+    let rgb_led_task = {
+        let config = config.clone();
+        let shutdown_rx = shutdown_tx.subscribe();
+        tokio::spawn(async move {
+            if let Err(e) =
+                rgb_led_actuator::run_rgb_led_actuator(&config, rgb_led_rx, shutdown_rx).await
+            {
+                log::error!("RGB LED actuator task failed: {}", e);
+            }
+        })
+    };
+
+    // Green LED Actuator Task
+    let green_led_task = {
+        let config = config.clone();
+        let shutdown_rx = shutdown_tx.subscribe();
+        tokio::spawn(async move {
+            if let Err(e) =
+                green_led_actuator::run_green_led_actuator(&config, green_led_rx, shutdown_rx).await
+            {
+                log::error!("Green LED actuator task failed: {}", e);
+            }
+        })
+    };
+
+    // Red LED Actuator Task
+    let red_led_task = {
+        let config = config.clone();
+        let shutdown_rx = shutdown_tx.subscribe();
+        tokio::spawn(async move {
+            if let Err(e) =
+                red_led_actuator::run_red_led_actuator(&config, red_led_rx, shutdown_rx).await
+            {
+                log::error!("Red LED actuator task failed: {}", e);
+            }
+        })
+    };
+
+    log::info!("LED actuator tasks spawned");
+
+    // Give LED actuators a moment to initialize
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+    // ========================================================================
+    // 4. Spawn Sensor Tasks (Heavy: Vosk model loading)
     // ========================================================================
 
     log::info!("Spawning sensor tasks...");
@@ -97,23 +147,10 @@ async fn main() -> Result<()> {
     log::info!("Sensor tasks spawned");
 
     // ========================================================================
-    // 4. Spawn Actuator Tasks
+    // 5. Spawn Speaker Actuator Task
     // ========================================================================
 
-    log::info!("Spawning actuator tasks...");
-
-    // RGB LED Actuator Task
-    let rgb_led_task = {
-        let config = config.clone();
-        let shutdown_rx = shutdown_tx.subscribe();
-        tokio::spawn(async move {
-            if let Err(e) =
-                rgb_led_actuator::run_rgb_led_actuator(&config, rgb_led_rx, shutdown_rx).await
-            {
-                log::error!("RGB LED actuator task failed: {}", e);
-            }
-        })
-    };
+    log::info!("Spawning speaker actuator task...");
 
     // Speaker Actuator Task
     let speaker_task = {
@@ -130,39 +167,17 @@ async fn main() -> Result<()> {
         })
     };
 
-    // Green LED Actuator Task
-    let green_led_task = {
-        let config = config.clone();
-        let shutdown_rx = shutdown_tx.subscribe();
-        tokio::spawn(async move {
-            if let Err(e) =
-                green_led_actuator::run_green_led_actuator(&config, green_led_rx, shutdown_rx).await
-            {
-                log::error!("Green LED actuator task failed: {}", e);
-            }
-        })
-    };
-
-    // Red LED Actuator Task
-    let red_led_task = {
-        let config = config.clone();
-        let shutdown_rx = shutdown_tx.subscribe();
-        tokio::spawn(async move {
-            if let Err(e) =
-                red_led_actuator::run_red_led_actuator(&config, red_led_rx, shutdown_rx).await
-            {
-                log::error!("Red LED actuator task failed: {}", e);
-            }
-        })
-    };
-
-    log::info!("Actuator tasks spawned");
+    log::info!("Speaker actuator task spawned");
 
     // ========================================================================
-    // 5. Spawn Command Distributor Task
+    // 6. Spawn Command Distributor Task
     // ========================================================================
 
     log::info!("Spawning command distributor task...");
+
+    // Clone LED channels for manual loading state override
+    let red_led_tx_clone = red_led_tx.clone();
+    let green_led_tx_clone = green_led_tx.clone();
 
     let distributor_task = {
         let shutdown_rx = shutdown_tx.subscribe();
@@ -185,7 +200,7 @@ async fn main() -> Result<()> {
     log::info!("Command distributor task spawned");
 
     // ========================================================================
-    // 6. Spawn AI Controller Task
+    // 7. Spawn AI Controller Task (Heavy: LLM service initialization)
     // ========================================================================
 
     log::info!("Spawning AI controller task...");
@@ -205,7 +220,35 @@ async fn main() -> Result<()> {
     log::info!("AI controller task spawned");
 
     // ========================================================================
-    // 7. System Ready
+    // 8. Override Initial State with Loading Indicators
+    // ========================================================================
+
+    // Wait for controller to send its initial Ready state commands
+    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+
+    log::info!("System loading - heavy components initializing (Vosk, Piper)...");
+
+    // Override with loading state: Red LEDs breathing = system loading
+    if let Err(e) = red_led_tx_clone
+        .send(Command::SetRedLeds(StatusLedPattern::Breathing))
+        .await
+    {
+        log::warn!("Failed to send loading red LED command: {}", e);
+    }
+
+    // Green LEDs off during loading
+    if let Err(e) = green_led_tx_clone
+        .send(Command::SetGreenLeds(StatusLedPattern::Off))
+        .await
+    {
+        log::warn!("Failed to send loading green LED command: {}", e);
+    }
+
+    // The controller will automatically transition LEDs back to Ready state (green breathing)
+    // when it completes initialization and starts processing events
+
+    // ========================================================================
+    // 9. System Ready Message
     // ========================================================================
 
     log::info!("");
@@ -217,7 +260,7 @@ async fn main() -> Result<()> {
     log::info!("");
 
     // ========================================================================
-    // 8. Wait for Shutdown Signal (Ctrl+C)
+    // 10. Wait for Shutdown Signal (Ctrl+C)
     // ========================================================================
 
     tokio::signal::ctrl_c().await?;

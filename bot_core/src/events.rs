@@ -39,6 +39,14 @@ pub enum Event {
     AmbientNoiseLevel(u8),
 
     // ============================================================================
+    // System Events
+    // ============================================================================
+    /// System has completed initialization and is ready for interaction
+    /// Sent by audio sensor when Vosk model finishes loading
+    /// Triggers transition from loading state (red LEDs) to ready state (green LEDs)
+    SystemReady,
+
+    // ============================================================================
     // Camera Sensor Events (Phase 2+)
     // ============================================================================
     /// Camera detected a human face/person
