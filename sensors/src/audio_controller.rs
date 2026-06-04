@@ -9,13 +9,13 @@
 //! - Emits events to the controller via channels
 //!
 //! # Example
-//! ```no_run
+//! ```ignore
 //! use bot_core::{Event, load_config};
 //! use sensors::AudioController;
 //!
-//! # async fn example() -> anyhow::Result<()> {
+//! # fn example() -> anyhow::Result<()> {
 //! let config = load_config("config/config.yaml")?;
-//! let mut audio = AudioController::new(&config.audio, "AudioSensor")?;
+//! let mut audio = AudioController::new(&config, "AudioSensor")?;
 //!
 //! // Start listening
 //! audio.start()?;

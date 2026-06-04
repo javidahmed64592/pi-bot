@@ -7,7 +7,7 @@ license.workspace = true
 [dependencies]
 # Internal dependencies
 bot_core = { path = "../bot_core" }
-audio_pipeline = { path = "../audio_pipeline" }  # For TTS test binary
+audio_pipeline = { path = "../audio_pipeline", optional = true }  # Only for TTS test binary
 
 # GPIO for RGB LED (PWM), status LEDs, LCD (I2C)
 rppal = { workspace = true }
@@ -25,3 +25,11 @@ thiserror = { workspace = true }
 
 # Audio playback for TTS
 rodio = "0.19"
+
+[features]
+# Feature for TTS test binary that requires Vosk library
+tts-test = ["audio_pipeline"]
+
+[[bin]]
+name = "tts-test"
+required-features = ["tts-test"]
