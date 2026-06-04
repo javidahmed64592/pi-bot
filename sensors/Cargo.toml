@@ -4,10 +4,6 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
-[[bin]]
-name = "wake-word-test"
-path = "src/bin/wake_word_test.rs"
-
 [dependencies]
 # Internal dependencies
 bot_core = { path = "../bot_core" }

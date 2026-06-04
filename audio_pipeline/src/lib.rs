@@ -3,16 +3,26 @@
 //! Speech-to-text and text-to-speech pipeline.
 //!
 //! Components:
-//! - wake_word.rs: Vosk-based wake word detection ("Hey Bot")
-//! - stt.rs: Vosk speech-to-text (same engine as wake word)
-//! - tts.rs: Piper text-to-speech synthesis (via tokio::process::Command)
+//! - wake_word.rs: Vosk-based wake word detection + speech-to-text
+//!   - Dual mode operation: WakeWord detection → Speech capture
+//!   - Automatic mode switching after wake word detected
+//!   - Configurable timeouts and silence detection
+//! - tts.rs: Piper text-to-speech synthesis (TODO: Phase 1.8)
+//!
+//! ## Wake Word + STT Flow
+//!
+//! 1. WakeWord Mode: Listens for configured wake phrase (e.g., "hey")
+//! 2. When detected: Automatically switches to SpeechCapture mode
+//! 3. SpeechCapture Mode: Transcribes user speech until:
+//!    - Silence detected (configurable threshold)
+//!    - Timeout reached (configurable limit)
+//! 4. Returns to WakeWord mode with captured transcription
 
 pub mod wake_word;
 
-pub use wake_word::{WakeWordDetector, WakeWordError};
+pub use wake_word::{DetectorMode, WakeWordDetector, WakeWordError};
 
-// TODO: Phase 1.7 - Implement stt.rs with Vosk full recognition
-// TODO: Phase 1.10 - Implement tts.rs with Piper (use tokio::process::Command)
+// TODO: Phase 1.8 - Implement tts.rs with Piper (use tokio::process::Command)
 
 #[cfg(test)]
 mod tests {

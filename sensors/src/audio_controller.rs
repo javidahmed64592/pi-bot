@@ -113,17 +113,30 @@ impl AudioController {
     ///
     /// # Behavior
     /// This is a non-blocking poll. Call this repeatedly in your event loop.
-    pub fn poll(&self) -> Option<Event> {
+    /// When wake word is detected, automatically switches to speech capture mode.
+    pub fn poll(&mut self) -> Option<Event> {
         if !self.is_listening {
             return None;
         }
 
+        // Check for wake word
         if self.detector.check_for_wake_word() {
-            log::info!("[{}] Wake word detected!", self.label);
-            Some(Event::WakeWordDetected)
-        } else {
-            None
+            log::info!(
+                "[{}] Wake word detected, switching to speech capture",
+                self.label
+            );
+            // Automatically start speech capture
+            self.detector.start_speech_capture();
+            return Some(Event::WakeWordDetected);
         }
+
+        // Check for captured speech (if in speech capture mode)
+        if let Some(speech) = self.detector.check_for_captured_speech() {
+            log::info!("[{}] Speech captured: '{}'", self.label, speech);
+            return Some(Event::SpeechCaptured(speech));
+        }
+
+        None
     }
 
     /// Stop the audio controller

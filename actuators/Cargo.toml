@@ -4,14 +4,6 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
-[[bin]]
-name = "rgb-led-test"
-path = "src/bin/rgb_led_test.rs"
-
-[[bin]]
-name = "status-led-test"
-path = "src/bin/status_led_test.rs"
-
 [dependencies]
 # Internal dependencies
 bot_core = { path = "../bot_core" }

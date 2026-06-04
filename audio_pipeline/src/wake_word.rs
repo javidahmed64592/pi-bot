@@ -46,6 +46,15 @@ enum AudioFrame {
     U16(Vec<u16>),
 }
 
+/// Detector operating mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DetectorMode {
+    /// Listening for wake word only (keyword spotting mode)
+    WakeWord,
+    /// Capturing and transcribing full speech after wake word
+    SpeechCapture,
+}
+
 /// Simple linear interpolation resampler for variable-sized buffers
 fn resample_linear(input: &[f32], input_rate: u32, output_rate: u32) -> Vec<f32> {
     if input_rate == output_rate {
@@ -93,10 +102,11 @@ pub enum WakeWordError {
     StreamError(String),
 }
 
-/// Wake word detector using Vosk keyword spotting
+/// Wake word detector using Vosk keyword spotting and speech-to-text
 ///
-/// This detector continuously monitors audio input and signals when
-/// the configured wake phrase is detected.
+/// This detector can operate in two modes:
+/// 1. WakeWord mode: Listens for the wake phrase only (keyword spotting)
+/// 2. SpeechCapture mode: Captures and transcribes full speech after wake word
 pub struct WakeWordDetector {
     /// Vosk recognizer for keyword spotting
     recognizer: Arc<Mutex<vosk::Recognizer>>,
@@ -126,6 +136,18 @@ pub struct WakeWordDetector {
 
     /// Flag to signal processing thread to stop
     stop_flag: Arc<AtomicBool>,
+
+    /// Current operating mode
+    mode: Arc<Mutex<DetectorMode>>,
+
+    /// Captured speech (available after SpeechCapture mode completes)
+    captured_speech: Arc<Mutex<Option<String>>>,
+
+    /// Timestamp when speech capture started (for timeout)
+    speech_start_time: Arc<Mutex<Option<std::time::Instant>>>,
+
+    /// Timestamp of last speech detected (for silence detection)
+    last_speech_time: Arc<Mutex<Option<std::time::Instant>>>,
 }
 
 impl WakeWordDetector {
@@ -180,6 +202,10 @@ impl WakeWordDetector {
             audio_tx: None,
             processing_thread: None,
             stop_flag: Arc::new(AtomicBool::new(false)),
+            mode: Arc::new(Mutex::new(DetectorMode::WakeWord)),
+            captured_speech: Arc::new(Mutex::new(None)),
+            speech_start_time: Arc::new(Mutex::new(None)),
+            last_speech_time: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -242,6 +268,10 @@ impl WakeWordDetector {
         let wake_phrase = self.wake_phrase.clone();
         let target_rate = self.sample_rate;
         let stop_flag = Arc::clone(&self.stop_flag);
+        let mode = Arc::clone(&self.mode);
+        let captured_speech = Arc::clone(&self.captured_speech);
+        let speech_start_time = Arc::clone(&self.speech_start_time);
+        let last_speech_time = Arc::clone(&self.last_speech_time);
 
         let processing_thread = thread::spawn(move || {
             Self::audio_processing_thread(
@@ -254,7 +284,11 @@ impl WakeWordDetector {
                 hw_channels,
                 target_rate,
                 stop_flag,
-            )
+                mode,
+                captured_speech,
+                speech_start_time,
+                last_speech_time,
+            );
         });
 
         self.processing_thread = Some(processing_thread);
@@ -283,6 +317,10 @@ impl WakeWordDetector {
     }
 
     /// Audio processing thread - receives raw audio, resamples, feeds to Vosk
+    ///
+    /// Handles two modes:
+    /// 1. WakeWord mode: Detects wake phrase using keyword spotting
+    /// 2. SpeechCapture mode: Transcribes full speech after wake word
     fn audio_processing_thread(
         audio_rx: mpsc::Receiver<AudioFrame>,
         recognizer: Arc<Mutex<vosk::Recognizer>>,
@@ -293,9 +331,20 @@ impl WakeWordDetector {
         hw_channels: u16,
         target_rate: u32,
         stop_flag: Arc<AtomicBool>,
+        mode: Arc<Mutex<DetectorMode>>,
+        captured_speech: Arc<Mutex<Option<String>>>,
+        speech_start_time: Arc<Mutex<Option<std::time::Instant>>>,
+        last_speech_time: Arc<Mutex<Option<std::time::Instant>>>,
     ) {
         let mut buffer: Vec<i16> = Vec::with_capacity(8000);
         let mut frame_count = 0u64;
+        let mut speech_buffer = Vec::new(); // For accumulating speech in capture mode
+        let mut last_partial = String::new(); // Track last partial result for silence detection
+
+        // STT configuration (these should come from config eventually)
+        let capture_timeout = std::time::Duration::from_secs_f32(10.0);
+        let silence_threshold = std::time::Duration::from_secs_f32(1.5);
+        let min_speech_duration = std::time::Duration::from_secs_f32(0.5);
 
         while !stop_flag.load(Ordering::Relaxed) {
             match audio_rx.recv_timeout(std::time::Duration::from_millis(100)) {
@@ -362,50 +411,191 @@ impl WakeWordDetector {
                     if buffer.len() >= 1600 {
                         let samples_to_process: Vec<i16> = buffer.drain(..).collect();
 
-                        // Feed to Vosk
-                        let mut recognizer = recognizer.lock().unwrap();
-                        match recognizer.accept_waveform(&samples_to_process) {
-                            Ok(state) => {
-                                log::debug!("Vosk decoding state: {:?}", state);
+                        // Check current mode
+                        let current_mode = *mode.lock().unwrap();
 
-                                // Check partial results (ongoing recognition)
-                                let partial_result = recognizer.partial_result();
-                                if !partial_result.partial.is_empty() {
-                                    log::info!("Vosk partial: '{}'", partial_result.partial);
-                                }
+                        match current_mode {
+                            DetectorMode::WakeWord => {
+                                // Wake word detection mode - use keyword spotting
+                                let mut recognizer = recognizer.lock().unwrap();
+                                match recognizer.accept_waveform(&samples_to_process) {
+                                    Ok(state) => {
+                                        log::debug!("Vosk decoding state: {:?}", state);
 
-                                // Check final results
-                                if matches!(
-                                    state,
-                                    vosk::DecodingState::Finalized | vosk::DecodingState::Running
-                                ) {
-                                    let result = recognizer.result();
-                                    if let Some(text) = result.single().map(|s| s.text) {
-                                        if !text.is_empty() {
-                                            log::info!("Vosk final: '{}'", text);
-                                            *last_transcription.lock().unwrap() =
-                                                Some(text.to_string());
-
-                                            let text_lower = text.to_lowercase();
-                                            log::debug!(
-                                                "Comparing '{}' with wake phrase '{}'",
-                                                text_lower,
-                                                wake_phrase
+                                        // Check partial results (ongoing recognition)
+                                        let partial_result = recognizer.partial_result();
+                                        if !partial_result.partial.is_empty() {
+                                            log::info!(
+                                                "Vosk partial: '{}'",
+                                                partial_result.partial
                                             );
-                                            if text_lower.contains(&wake_phrase) {
-                                                log::info!("✓ Wake word detected: '{}'", text);
-                                                *detected.lock().unwrap() = true;
+                                        }
+
+                                        // Check final results
+                                        if matches!(
+                                            state,
+                                            vosk::DecodingState::Finalized
+                                                | vosk::DecodingState::Running
+                                        ) {
+                                            let result = recognizer.result();
+                                            if let Some(text) = result.single().map(|s| s.text) {
+                                                if !text.is_empty() {
+                                                    log::info!("Vosk final: '{}'", text);
+                                                    *last_transcription.lock().unwrap() =
+                                                        Some(text.to_string());
+
+                                                    let text_lower = text.to_lowercase();
+                                                    log::debug!(
+                                                        "Comparing '{}' with wake phrase '{}'",
+                                                        text_lower,
+                                                        wake_phrase
+                                                    );
+                                                    if text_lower.contains(&wake_phrase) {
+                                                        log::info!(
+                                                            "✓ Wake word detected: '{}'",
+                                                            text
+                                                        );
+                                                        *detected.lock().unwrap() = true;
+                                                    }
+                                                }
                                             }
                                         }
                                     }
+                                    Err(e) => log::error!("Vosk error: {:?}", e),
                                 }
                             }
-                            Err(e) => log::error!("Vosk error: {:?}", e),
+                            DetectorMode::SpeechCapture => {
+                                // Speech capture mode - transcribe everything
+                                speech_buffer.extend_from_slice(&samples_to_process);
+
+                                // Check for timeout
+                                let start_time = speech_start_time.lock().unwrap();
+                                if let Some(start) = *start_time {
+                                    if start.elapsed() > capture_timeout {
+                                        log::info!(
+                                            "Speech capture timeout after {:.1}s",
+                                            capture_timeout.as_secs_f32()
+                                        );
+                                        drop(start_time); // Release lock
+
+                                        // Finalize speech capture
+                                        Self::finalize_speech_capture(
+                                            &speech_buffer,
+                                            &recognizer,
+                                            &captured_speech,
+                                            &mode,
+                                            &speech_start_time,
+                                            &last_speech_time,
+                                            min_speech_duration,
+                                        );
+                                        speech_buffer.clear();
+                                        last_partial.clear();
+                                        continue;
+                                    }
+                                }
+                                drop(start_time);
+
+                                // Feed to Vosk for full transcription
+                                let mut rec_guard = recognizer.lock().unwrap();
+                                match rec_guard.accept_waveform(&samples_to_process) {
+                                    Ok(_state) => {
+                                        // Check if partial result is CHANGING (indicates active speech)
+                                        // DO NOT call result() - it clears the buffer!
+                                        let partial_result = rec_guard.partial_result();
+                                        let current_partial = partial_result.partial;
+
+                                        if !current_partial.is_empty()
+                                            && current_partial != last_partial
+                                        {
+                                            log::debug!("Speech partial: '{}'", current_partial);
+                                            // Update last speech time only when partial result CHANGES
+                                            *last_speech_time.lock().unwrap() =
+                                                Some(std::time::Instant::now());
+                                            last_partial = current_partial.to_string();
+                                        }
+
+                                        // Check for silence (no speech activity for silence_threshold)
+                                        let last_time = last_speech_time.lock().unwrap();
+                                        if let Some(last) = *last_time {
+                                            if last.elapsed() > silence_threshold {
+                                                log::info!(
+                                                    "Silence detected for {:.1}s, ending capture",
+                                                    silence_threshold.as_secs_f32()
+                                                );
+                                                drop(last_time);
+                                                drop(rec_guard);
+
+                                                // Finalize speech capture
+                                                Self::finalize_speech_capture(
+                                                    &speech_buffer,
+                                                    &recognizer,
+                                                    &captured_speech,
+                                                    &mode,
+                                                    &speech_start_time,
+                                                    &last_speech_time,
+                                                    min_speech_duration,
+                                                );
+                                                speech_buffer.clear();
+                                                last_partial.clear();
+                                                continue;
+                                            }
+                                        }
+                                    }
+                                    Err(e) => log::error!("Vosk STT error: {:?}", e),
+                                }
+                            }
                         }
                     }
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => {
-                    // Normal timeout, continue loop
+                    // Check for timeouts/silence in speech capture mode
+                    let current_mode = *mode.lock().unwrap();
+                    if current_mode == DetectorMode::SpeechCapture {
+                        // Check capture timeout
+                        let start_time = speech_start_time.lock().unwrap();
+                        if let Some(start) = *start_time {
+                            if start.elapsed() > capture_timeout {
+                                log::info!("Speech capture timeout (no audio)");
+                                drop(start_time);
+
+                                Self::finalize_speech_capture(
+                                    &speech_buffer,
+                                    &recognizer,
+                                    &captured_speech,
+                                    &mode,
+                                    &speech_start_time,
+                                    &last_speech_time,
+                                    min_speech_duration,
+                                );
+                                speech_buffer.clear();
+                                last_partial.clear();
+                                continue;
+                            }
+                        }
+                        drop(start_time);
+
+                        // Check silence timeout
+                        let last_time = last_speech_time.lock().unwrap();
+                        if let Some(last) = *last_time {
+                            if last.elapsed() > silence_threshold {
+                                log::info!("Silence timeout (no audio frames)");
+                                drop(last_time);
+
+                                Self::finalize_speech_capture(
+                                    &speech_buffer,
+                                    &recognizer,
+                                    &captured_speech,
+                                    &mode,
+                                    &speech_start_time,
+                                    &last_speech_time,
+                                    min_speech_duration,
+                                );
+                                speech_buffer.clear();
+                                last_partial.clear();
+                                continue;
+                            }
+                        }
+                    }
                 }
                 Err(mpsc::RecvTimeoutError::Disconnected) => {
                     log::info!("Audio channel disconnected, stopping processing thread");
@@ -510,6 +700,105 @@ impl WakeWordDetector {
     /// whether it was the wake phrase.
     pub fn last_transcription(&self) -> Option<String> {
         self.last_transcription.lock().unwrap().clone()
+    }
+
+    /// Switch detector to speech capture mode
+    ///
+    /// After calling this, the detector will capture and transcribe full speech
+    /// instead of just listening for the wake word. Typically called after
+    /// wake word is detected.
+    ///
+    /// # Behavior
+    /// - Clears recognizer state from wake word detection
+    /// - Resets captured speech buffer
+    /// - Starts speech capture timer
+    /// - Switches Vosk to full recognition mode (not keyword spotting)
+    pub fn start_speech_capture(&self) {
+        log::info!("Switching to speech capture mode");
+
+        // Clear any residual state from wake word detection
+        let mut rec = self.recognizer.lock().unwrap();
+        let _ = rec.final_result();
+        drop(rec);
+
+        *self.mode.lock().unwrap() = DetectorMode::SpeechCapture;
+        *self.captured_speech.lock().unwrap() = None;
+        *self.speech_start_time.lock().unwrap() = Some(std::time::Instant::now());
+        *self.last_speech_time.lock().unwrap() = Some(std::time::Instant::now());
+    }
+
+    /// Check for captured speech
+    ///
+    /// Returns captured speech if available and resets the detector
+    /// back to wake word mode.
+    ///
+    /// # Returns
+    /// - `Some(String)` if speech was captured
+    /// - `None` if still capturing or no speech detected
+    pub fn check_for_captured_speech(&self) -> Option<String> {
+        let mut captured = self.captured_speech.lock().unwrap();
+        if let Some(speech) = captured.take() {
+            log::info!("Retrieved captured speech: '{}'", speech);
+            // Reset to wake word mode
+            *self.mode.lock().unwrap() = DetectorMode::WakeWord;
+            *self.speech_start_time.lock().unwrap() = None;
+            *self.last_speech_time.lock().unwrap() = None;
+            Some(speech)
+        } else {
+            None
+        }
+    }
+
+    /// Get current detector mode
+    pub fn mode(&self) -> DetectorMode {
+        *self.mode.lock().unwrap()
+    }
+
+    /// Finalize speech capture by processing the buffer and extracting text
+    fn finalize_speech_capture(
+        _speech_buffer: &[i16],
+        recognizer: &Arc<Mutex<vosk::Recognizer>>,
+        captured_speech: &Arc<Mutex<Option<String>>>,
+        mode: &Arc<Mutex<DetectorMode>>,
+        speech_start_time: &Arc<Mutex<Option<std::time::Instant>>>,
+        last_speech_time: &Arc<Mutex<Option<std::time::Instant>>>,
+        min_speech_duration: std::time::Duration,
+    ) {
+        // Check if we have enough speech
+        let start_time = speech_start_time.lock().unwrap();
+        if let Some(start) = *start_time {
+            let duration = start.elapsed();
+            if duration < min_speech_duration {
+                log::info!(
+                    "Speech too short ({:.1}s < {:.1}s), ignoring",
+                    duration.as_secs_f32(),
+                    min_speech_duration.as_secs_f32()
+                );
+                *mode.lock().unwrap() = DetectorMode::WakeWord;
+                return;
+            }
+        }
+        drop(start_time);
+
+        // Force final result from recognizer
+        let mut recognizer = recognizer.lock().unwrap();
+        let final_result = recognizer.final_result();
+
+        if let Some(text) = final_result.single().map(|s| s.text) {
+            if !text.is_empty() {
+                log::info!("Captured speech: '{}'", text);
+                *captured_speech.lock().unwrap() = Some(text.to_string());
+            } else {
+                log::info!("No speech detected in capture");
+            }
+        } else {
+            log::info!("No speech recognized");
+        }
+
+        // Reset state
+        *mode.lock().unwrap() = DetectorMode::WakeWord;
+        *speech_start_time.lock().unwrap() = None;
+        *last_speech_time.lock().unwrap() = None;
     }
 
     /// Stop listening (drops the audio stream)

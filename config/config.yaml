@@ -34,6 +34,19 @@ audio:
     # true = keyword mode (just wake word), false = full STT always
     keyword_mode: true
 
+    # Speech capture settings (after wake word detected)
+    stt:
+      # Maximum duration to capture speech after wake word (seconds)
+      capture_timeout: 30.0
+
+      # Silence duration to end speech capture (seconds)
+      # If user is silent for this long, assume they're done speaking
+      silence_threshold: 3.0
+
+      # Minimum speech duration to process (seconds)
+      # Filters out very short accidental triggers
+      min_speech_duration: 1.0
+
   # Piper Text-to-Speech
   piper:
     voice: "en_GB-alba-medium"

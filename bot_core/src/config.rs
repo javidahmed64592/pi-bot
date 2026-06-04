@@ -122,6 +122,22 @@ pub struct VoskConfig {
 
     /// Use keyword spotting mode (faster, less CPU)
     pub keyword_mode: bool,
+
+    /// Speech-to-text capture settings
+    pub stt: SttConfig,
+}
+
+/// Speech-to-text capture configuration
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SttConfig {
+    /// Maximum duration to capture speech after wake word (seconds)
+    pub capture_timeout: f32,
+
+    /// Silence duration to end speech capture (seconds)
+    pub silence_threshold: f32,
+
+    /// Minimum speech duration to process (seconds)
+    pub min_speech_duration: f32,
 }
 
 /// Piper TTS configuration
