@@ -15,6 +15,7 @@
 // ============================================================================
 
 pub mod rgb_led_controller;
+pub mod speaker_controller;
 pub mod status_led_controller;
 
 // ============================================================================
@@ -22,6 +23,7 @@ pub mod status_led_controller;
 // ============================================================================
 
 pub use rgb_led_controller::RgbLedController;
+pub use speaker_controller::SpeakerController;
 pub use status_led_controller::StatusLedController;
 
 #[cfg(test)]

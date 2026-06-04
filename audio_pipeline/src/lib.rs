@@ -18,11 +18,11 @@
 //!    - Timeout reached (configurable limit)
 //! 4. Returns to WakeWord mode with captured transcription
 
+pub mod tts;
 pub mod wake_word;
 
+pub use tts::{PiperTts, TtsError};
 pub use wake_word::{DetectorMode, WakeWordDetector, WakeWordError};
-
-// TODO: Phase 1.8 - Implement tts.rs with Piper (use tokio::process::Command)
 
 #[cfg(test)]
 mod tests {
