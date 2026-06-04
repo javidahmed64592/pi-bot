@@ -24,11 +24,11 @@ audio:
 
   # Vosk - Offline wake word detection + speech-to-text
   vosk:
-    # Path to Vosk model directory (download from https://alphacephei.com/vosk/models)
-    model_path: "models/vosk/vosk-model-small-en-us-0.15"
+    # Path to Vosk model directory (download via scripts/download_models.sh)
+    model_path: "models/vosk/vosk-model-en-us-0.22"
 
     # Wake word/phrase to listen for (case-insensitive)
-    wake_phrase: "hey bot"
+    wake_phrase: "hey"
 
     # Keyword spotting mode (faster, less CPU) vs full recognition
     # true = keyword mode (just wake word), false = full STT always
