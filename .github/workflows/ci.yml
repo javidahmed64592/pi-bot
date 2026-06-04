@@ -32,6 +32,3 @@ jobs:
 
       - name: Lint code
         run: cargo clippy --workspace -- -D warnings
-
-      - name: Build release
-        run: cargo build --workspace --release
