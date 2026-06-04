@@ -4,15 +4,54 @@ This project uses large ML models for offline speech recognition and text-to-spe
 
 ## Quick Setup
 
-Run the automated download script:
+**1. Choose your Vosk model in `config/config.yaml`:**
+
+Uncomment the model you want to use (see model comparison below):
+
+```yaml
+vosk:
+  # Uncomment one of these:
+  # model_path: "models/vosk/vosk-model-small-en-us-0.15"      # 40MB - Fast, low RAM
+  model_path: "models/vosk/vosk-model-en-us-0.22-lgraph"      # 128MB - Recommended
+  # model_path: "models/vosk/vosk-model-en-us-0.22"            # 1.8GB - Highest accuracy
+```
+
+**2. Run the automated download script:**
 
 ```bash
 ./scripts/download_models.sh
 ```
 
-This will download:
-- **Vosk** (1.8GB): Full English speech recognition model
-- **Piper** (~100MB): British English text-to-speech model
+The script reads your config and downloads only the selected models.
+
+---
+
+## Vosk Model Comparison
+
+Choose based on your Raspberry Pi's RAM and accuracy needs:
+
+| Model | Size | RAM Usage | Accuracy | Speed | Best For |
+|-------|------|-----------|----------|-------|----------|
+| **vosk-model-small-en-us-0.15** | 40MB | ~200MB | Low | Very Fast | Testing, low-RAM systems |
+| **vosk-model-en-us-0.22-lgraph** ⭐ | 128MB | ~500MB | Good | Fast | **Recommended balance** |
+| **vosk-model-en-us-0.22** | 1.8GB | ~2GB | Excellent | Moderate | Best accuracy, high RAM |
+| **vosk-model-en-us-0.42-gigaspeech** | 2.3GB | ~2.5GB | Best | Slower | Ultimate accuracy |
+| **vosk-model-en-us-daanzu-20200905** | 1GB | ~1.5GB | Good | Fast | Voice commands, dictation |
+
+**💡 Recommendation**: Start with `vosk-model-en-us-0.22-lgraph` for the best balance of accuracy and RAM usage.
+
+---
+
+## Switching Models
+
+1. Comment out current model in `config/config.yaml`
+2. Uncomment desired model
+3. Run `./scripts/download_models.sh` to download if needed
+4. Restart the application
+
+Old model files remain in `models/vosk/` and can be deleted manually to save disk space.
+
+---
 
 ## Manual Setup
 
