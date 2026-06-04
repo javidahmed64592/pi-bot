@@ -54,7 +54,7 @@ audio:
 
       # Silence duration to end speech capture (seconds)
       # If user is silent for this long, assume they're done speaking
-      silence_threshold: 3.0
+      silence_threshold: 2.5
 
       # Minimum speech duration to process (seconds)
       # Filters out very short accidental triggers
