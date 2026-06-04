@@ -31,8 +31,11 @@ pub struct SystemConfig {
     /// Bot behavior parameters
     pub behavior: BehaviorConfig,
 
-    /// LED pattern configurations
-    pub led_patterns: LedPatternConfig,
+    /// RGB LED configuration for conversation states
+    pub rgb_led: RgbLedConfig,
+
+    /// Status LED pattern configuration
+    pub status_leds: StatusLedConfig,
 }
 
 // ============================================================================
@@ -228,23 +231,116 @@ impl BehaviorConfig {
 }
 
 // ============================================================================
-// LED Pattern Configuration
+// LED Configuration
 // ============================================================================
 
-/// LED pattern names for different states
+/// RGB LED configuration for all conversation states
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct LedPatternConfig {
-    /// Pattern for idle/ready state
-    pub idle_ambient: String,
+pub struct RgbLedConfig {
+    /// Ready state (default, monitoring)
+    pub ready: StateAppearance,
 
-    /// Pattern for listening state
-    pub listening: String,
+    /// Observing state (deciding whether to speak)
+    pub observing: StateAppearance,
 
-    /// Pattern for thinking state
-    pub thinking: String,
+    /// Silent state (Do Not Disturb)
+    pub silent: StateAppearance,
 
-    /// Pattern for speaking state
-    pub speaking: String,
+    /// Active conversation sub-states
+    pub active: ActiveStateConfig,
+}
+
+impl RgbLedConfig {
+    /// Get the appearance (pattern + color) for a given conversation state
+    ///
+    /// # Example
+    /// ```no_run
+    /// use bot_core::config::load_config;
+    /// use bot_core::state::ConversationState;
+    ///
+    /// let config = load_config("config/config.yaml")?;
+    /// let state = ConversationState::Ready;
+    ///
+    /// // Get the configured appearance for this state
+    /// let appearance = config.rgb_led.get_appearance(&state);
+    ///
+    /// // Convert to RgbColor for LED control
+    /// let color = appearance.to_rgb_color();
+    /// println!("Ready state: {} pattern with color RGB({}, {}, {})",
+    ///          appearance.pattern, color.r, color.g, color.b);
+    /// # Ok::<(), anyhow::Error>(())
+    /// ```
+    pub fn get_appearance(&self, state: &crate::state::ConversationState) -> &StateAppearance {
+        use crate::state::{ActiveSubState, ConversationState};
+
+        match state {
+            ConversationState::Ready => &self.ready,
+            ConversationState::Observing => &self.observing,
+            ConversationState::Silent => &self.silent,
+            ConversationState::Active(sub) => match sub {
+                ActiveSubState::Listening => &self.active.listening,
+                ActiveSubState::Thinking => &self.active.thinking,
+                ActiveSubState::Speaking => &self.active.speaking,
+                ActiveSubState::Learning => &self.active.learning,
+            },
+        }
+    }
+}
+
+/// Active conversation sub-state appearance config
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ActiveStateConfig {
+    pub listening: StateAppearance,
+    pub thinking: StateAppearance,
+    pub speaking: StateAppearance,
+    pub learning: StateAppearance,
+}
+
+/// Pattern and color configuration for a single state
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StateAppearance {
+    /// Pattern name ("breathing", "pulse", "solid", "gradient", "rainbow")
+    pub pattern: String,
+
+    /// RGB color as [R, G, B] array (0-255 for each channel)
+    pub color: [u8; 3],
+}
+
+impl StateAppearance {
+    /// Convert the color array to an RgbColor struct
+    pub fn to_rgb_color(&self) -> crate::state::RgbColor {
+        crate::state::RgbColor::new(self.color[0], self.color[1], self.color[2])
+    }
+}
+
+/// Status LED pattern configuration
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StatusLedConfig {
+    /// Green LED patterns for active states
+    pub green: GreenLedPatterns,
+
+    /// Red LED patterns for inactive/error states
+    pub red: RedLedPatterns,
+}
+
+/// Green status LED patterns
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GreenLedPatterns {
+    /// Pattern when bot is ready ("solid")
+    pub ready: String,
+
+    /// Pattern when bot is active ("breathing")
+    pub active: String,
+}
+
+/// Red status LED patterns
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RedLedPatterns {
+    /// Pattern for Silent/DND mode ("breathing")
+    pub silent: String,
+
+    /// Pattern for system errors ("flashing")
+    pub error: String,
 }
 
 // ============================================================================

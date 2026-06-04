@@ -38,7 +38,7 @@ These determine **what the bot does** (when it talks, when it listens, when it's
 - → **Active**: Wake phrase detected
 - → **Silent**: User requests Do Not Disturb
 
-**Default lighting**: StateBased (minimal/off)
+**Default lighting**: StateBased (green breathing)
 
 ---
 
@@ -119,13 +119,13 @@ These determine **what you see** (LED color, pattern, brightness):
 **Patterns**:
 | Conversation State | LED Pattern |
 |-------------------|-------------|
-| Ready | Minimal/off (or very dim) |
-| Observing | Subtle dim pulse |
+| Ready | Green breathing |
+| Observing | Blue breathing |
 | Active.Listening | Orange breathing animation |
 | Active.Thinking | Blue pulsing |
 | Active.Speaking | Solid green |
-| Active.Learning | Brief purple flash |
-| Silent | Dim white or off |
+| Active.Learning | Purple pulsing |
+| Silent | Red breathing |
 
 **Use case**: Normal operation, clear visual feedback
 
@@ -369,6 +369,46 @@ Users can configure:
 3. **Silent duration**: Default Do Not Disturb timeout (1 hour default)
 4. **Ambient persistence**: Whether ambient lighting continues during Active state
 5. **Default lighting**: StateBased or Ambient on startup
+
+### Customizing RGB LED Colors
+
+All state colors and patterns are fully configurable in `config/config.yaml`. Each conversation state can have a custom color and pattern:
+
+```yaml
+rgb_led:
+  ready:
+    pattern: "breathing"
+    color: [0, 255, 0]  # Green - change to your preference!
+
+  observing:
+    pattern: "breathing"
+    color: [0, 0, 255]  # Blue
+
+  silent:
+    pattern: "breathing"
+    color: [255, 0, 0]  # Red
+
+  active:
+    listening:
+      pattern: "breathing"
+      color: [255, 165, 0]  # Orange
+
+    thinking:
+      pattern: "pulse"
+      color: [0, 0, 255]  # Blue
+
+    speaking:
+      pattern: "solid"
+      color: [0, 255, 0]  # Green
+
+    learning:
+      pattern: "pulse"
+      color: [128, 0, 128]  # Purple
+```
+
+**Available patterns**: `breathing`, `pulse`, `solid`, `gradient`, `rainbow`
+
+**Color format**: `[R, G, B]` where each value is 0-255
 
 ---
 

@@ -51,7 +51,7 @@ When in **Active** conversation state, the bot cycles through:
 | **Listening** | Actively recording and processing speech | Orange breathing animation |
 | **Thinking** | Processing input through LLM | Blue pulsing |
 | **Speaking** | Generating audio output | Solid green |
-| **Learning** | Storing important memory | Brief purple flash |
+| **Learning** | Storing important memory | Purple pulsing |
 
 ---
 
@@ -151,11 +151,11 @@ For quick reference, here are the most common combinations:
 **Purpose**: Main visual communication channel for bot's state
 
 **Color States**:
-- **Green**: Speaking, everything normal
-- **Orange**: Listening, processing
-- **Blue**: Thinking, analyzing
-- **Red**: Error state, something wrong
-- **Purple**: Learning/remembering something
+- **Green**: Ready state (breathing), Speaking (solid)
+- **Orange**: Listening, processing (breathing)
+- **Blue**: Observing state (breathing), Thinking (pulsing)
+- **Red**: Silent/DND state (breathing)
+- **Purple**: Learning/remembering something (pulsing)
 - **Warm colors (red-orange-yellow)**: Ambient comfort lighting
 - **Cool colors (blue-cyan)**: Focused work lighting
 - **Rainbow**: Celebration or music mode

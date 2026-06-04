@@ -135,15 +135,15 @@ impl BotState {
     /// Get the color associated with the current conversation state
     pub fn state_color(&self) -> RgbColor {
         match &self.conversation_state {
-            ConversationState::Ready => RgbColor::CYAN, // Calm, ready to respond
-            ConversationState::Observing => RgbColor::YELLOW, // Alert, observing
+            ConversationState::Ready => RgbColor::GREEN, // Ready, breathing green
+            ConversationState::Observing => RgbColor::BLUE, // Observing, breathing blue
             ConversationState::Active(sub) => match sub {
                 ActiveSubState::Listening => RgbColor::LISTENING, // Orange
                 ActiveSubState::Thinking => RgbColor::THINKING,   // Blue
                 ActiveSubState::Speaking => RgbColor::SPEAKING,   // Green
                 ActiveSubState::Learning => RgbColor::LEARNING,   // Purple
             },
-            ConversationState::Silent => RgbColor::OFF, // DND mode, no light
+            ConversationState::Silent => RgbColor::RED, // DND mode, breathing red
         }
     }
 }

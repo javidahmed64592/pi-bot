@@ -91,9 +91,58 @@ behavior:
   idle_timeout: 1800  # 30 minutes
   do_not_disturb_duration: 3600  # 1 hour default
 
-# LED Patterns
-led_patterns:
-  idle_ambient: "gradient"
-  listening: "breathing"
-  thinking: "pulse"
-  speaking: "solid"
+# RGB LED Configuration (StateBased lighting mode)
+# Each state can have a custom pattern and color [R, G, B] (0-255)
+#
+# Available patterns:
+#   - breathing: Smooth fade in/out (passive states)
+#   - pulse: Quick pulse animation (thinking, processing)
+#   - solid: Static color (speaking, active)
+#   - gradient: Transition between colors (ambient mode)
+#   - rainbow: Cycle through rainbow (ambient mode)
+#
+# Color examples:
+#   Red:    [255, 0, 0]    Yellow: [255, 255, 0]   White:  [255, 255, 255]
+#   Green:  [0, 255, 0]    Cyan:   [0, 255, 255]   Off:    [0, 0, 0]
+#   Blue:   [0, 0, 255]    Purple: [128, 0, 128]   Orange: [255, 165, 0]
+#
+rgb_led:
+  # Top-level conversation states
+  ready:
+    pattern: "breathing"
+    color: [0, 255, 0]  # Green
+
+  observing:
+    pattern: "breathing"
+    color: [0, 0, 255]  # Blue
+
+  silent:
+    pattern: "breathing"
+    color: [255, 0, 0]  # Red
+
+  # Active conversation sub-states
+  active:
+    listening:
+      pattern: "breathing"
+      color: [255, 165, 0]  # Orange/brown
+
+    thinking:
+      pattern: "pulse"
+      color: [0, 0, 255]  # Blue
+
+    speaking:
+      pattern: "solid"
+      color: [0, 255, 0]  # Green
+
+    learning:
+      pattern: "pulse"
+      color: [128, 0, 128]  # Purple
+
+# Status LED Patterns (single-color LEDs, pattern only)
+status_leds:
+  green:
+    ready: "solid"          # Ready to interact
+    active: "breathing"     # Processing/in conversation
+  red:
+    silent: "breathing"     # Do Not Disturb mode
+    error: "flashing"       # System error
