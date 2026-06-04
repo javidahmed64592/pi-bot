@@ -19,21 +19,18 @@
 //!
 //! ## Usage
 //!
-//! ```ignore
+//! ```no_run
 //! use audio_pipeline::PiperTts;
 //! use bot_core::config::PiperConfig;
 //!
-//! # async fn example() -> anyhow::Result<()> {
 //! let config = PiperConfig {
 //!     voice: "en_GB-alba-medium".to_string(),
 //!     model_path: "models/piper/en_GB-alba-medium.onnx".to_string(),
 //!     config_path: "models/piper/en_GB-alba-medium.onnx.json".to_string(),
 //! };
 //!
-//! let mut tts = PiperTts::new(config).await?;
-//! let audio = tts.synthesize("Hello world").await?;
-//! # Ok(())
-//! # }
+//! let mut tts = PiperTts::new(config).await.expect("Failed to init TTS");
+//! let audio = tts.synthesize("Hello world").await.expect("Failed to synthesize");
 //! ```
 
 use anyhow::Result;

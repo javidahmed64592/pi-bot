@@ -5,14 +5,11 @@
 //! ## Usage
 //!
 //! ```bash
-//! # Build with feature flag (requires Vosk library)
-//! cargo build --bin tts-test --features actuators/tts-test
-//!
-//! # Run with default config
-//! cargo run --bin tts-test --features actuators/tts-test
+//! # Test with default config
+//! cargo run --bin tts-test
 //!
 //! # Test with specific text
-//! cargo run --bin tts-test --features actuators/tts-test -- "Hello, I am Pi Bot"
+//! cargo run --bin tts-test -- "Hello, I am Pi Bot"
 //! ```
 //!
 //! ## What it tests

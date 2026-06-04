@@ -10,25 +10,21 @@
 //! - Returns detection events when wake phrase is detected
 //!
 //! # Example
-//! ```ignore
+//! ```no_run
 //! use audio_pipeline::WakeWordDetector;
-//! use bot_core::config::SttConfig;
 //!
-//! # fn example() -> anyhow::Result<()> {
-//! let stt_config = SttConfig {
-//!     capture_timeout: 10.0,
-//!     silence_threshold: 1.5,
-//!     min_speech_duration: 0.5,
-//! };
-//!
+//! # async fn example() -> anyhow::Result<()> {
 //! let detector = WakeWordDetector::new(
 //!     "models/vosk/vosk-model-small-en-us-0.15",
 //!     "hey bot",
 //!     16000,
-//!     stt_config,
 //! )?;
 //!
-//! // Detector runs in background thread and returns detected wake words
+//! // Start listening in background
+//! let mut detector = detector;
+//! if detector.check_for_wake_word().await? {
+//!     println!("Wake word detected!");
+//! }
 //! # Ok(())
 //! # }
 //! ```
