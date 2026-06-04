@@ -7,7 +7,7 @@ license.workspace = true
 [dependencies]
 # Internal dependencies
 bot_core = { path = "../bot_core" }
-sensors = { path = "../sensors", features = ["audio"] }
+sensors = { path = "../sensors" }
 actuators = { path = "../actuators" }
 ai_controller = { path = "../ai_controller" }
 audio_pipeline = { path = "../audio_pipeline" }

@@ -6,8 +6,7 @@
 //!
 //! # Usage
 //! ```bash
-//! # Build with feature flag (requires Vosk library)
-//! cargo run --bin stt_test --features sensors/audio
+//! cargo run --bin stt-test
 //! # Say "hey" (wake word)
 //! # Then speak your message
 //! # Wait for transcription result

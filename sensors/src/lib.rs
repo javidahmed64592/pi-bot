@@ -15,7 +15,6 @@
 // Module Declarations
 // ============================================================================
 
-#[cfg(feature = "audio")]
 pub mod audio_controller;
 pub mod pir_sensor_controller;
 
@@ -23,7 +22,6 @@ pub mod pir_sensor_controller;
 // Re-exports
 // ============================================================================
 
-#[cfg(feature = "audio")]
 pub use audio_controller::{AudioController, AudioError};
 pub use pir_sensor_controller::PirSensorController;
 
