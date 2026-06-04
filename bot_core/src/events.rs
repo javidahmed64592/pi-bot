@@ -58,6 +58,17 @@ pub enum Event {
     // EnvironmentReading { temp: f32, humidity: f32 },
 
     // ============================================================================
+    // User Action Events
+    // ============================================================================
+    /// User requested Do Not Disturb (Silent) mode
+    /// Bot will enter Silent state, showing red breathing LEDs
+    UserRequestedDND,
+
+    /// User requested to exit Do Not Disturb mode
+    /// Bot will return to Ready state
+    UserRequestedWakeUp,
+
+    // ============================================================================
     // System Events
     // ============================================================================
     /// Health status of a component changed
@@ -91,6 +102,10 @@ impl Event {
 
     pub fn is_system_event(&self) -> bool {
         matches!(self, Event::ComponentHealth { .. })
+    }
+
+    pub fn is_user_action(&self) -> bool {
+        matches!(self, Event::UserRequestedDND | Event::UserRequestedWakeUp)
     }
 }
 

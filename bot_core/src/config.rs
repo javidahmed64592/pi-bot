@@ -276,7 +276,7 @@ impl RgbLedConfig {
         match state {
             ConversationState::Ready => &self.ready,
             ConversationState::Observing => &self.observing,
-            ConversationState::Silent => &self.silent,
+            ConversationState::Silent { .. } => &self.silent,
             ConversationState::Active(sub) => match sub {
                 ActiveSubState::Listening => &self.active.listening,
                 ActiveSubState::Thinking => &self.active.thinking,
@@ -310,6 +310,27 @@ impl StateAppearance {
     /// Convert the color array to an RgbColor struct
     pub fn to_rgb_color(&self) -> crate::state::RgbColor {
         crate::state::RgbColor::new(self.color[0], self.color[1], self.color[2])
+    }
+
+    /// Convert the pattern string to LedPattern enum
+    pub fn pattern_to_led_pattern(&self) -> crate::commands::LedPattern {
+        use crate::commands::LedPattern;
+
+        match self.pattern.to_lowercase().as_str() {
+            "solid" => LedPattern::Solid,
+            "breathing" => LedPattern::Breathing,
+            "pulse" => LedPattern::Pulse,
+            "gradient" => LedPattern::Gradient,
+            "rainbow" => LedPattern::Rainbow,
+            "colorcycle" | "color_cycle" => LedPattern::ColorCycle,
+            _ => {
+                log::warn!(
+                    "Unknown LED pattern '{}', defaulting to Solid",
+                    self.pattern
+                );
+                LedPattern::Solid
+            }
+        }
     }
 }
 

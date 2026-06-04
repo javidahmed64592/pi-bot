@@ -22,6 +22,9 @@ rppal = { workspace = true }
 # Time utilities
 chrono = { workspace = true }
 
+# Logging
+log = { workspace = true }
+
 # Error handling
 anyhow = { workspace = true }
 thiserror = { workspace = true }

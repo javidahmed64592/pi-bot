@@ -154,9 +154,9 @@ mod tests {
         // Observing → Active (Listening)
         state.conversation_state = ConversationState::Active(ActiveSubState::Listening);
 
-        // Silent mode prevents responses
-        state.conversation_state = ConversationState::Silent;
-        assert!(!state.can_respond());
+        // Silent mode (manual) - still responds but concisely
+        state.conversation_state = ConversationState::Silent { manual: true };
+        assert!(state.can_respond()); // Bot always can respond, even in Silent
     }
 
     #[test]

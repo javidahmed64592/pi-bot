@@ -30,7 +30,8 @@ pub enum ConversationState {
 
     /// Do Not Disturb mode - bot won't initiate conversations
     /// Still responds to wake phrase but stays concise
-    Silent,
+    /// manual: true if user explicitly requested DND, false if auto (PIR timeout)
+    Silent { manual: bool },
 }
 
 /// Sub-states when bot is in Active conversation
@@ -122,9 +123,22 @@ impl BotState {
     }
 
     /// Check if bot can respond to conversations
-    /// Returns false if in Silent mode or system is unhealthy
+    /// Returns true always (even in Silent mode, bot responds to wake word)
     pub fn can_respond(&self) -> bool {
-        !matches!(self.conversation_state, ConversationState::Silent)
+        true
+    }
+
+    /// Check if bot is in Silent mode
+    pub fn is_silent(&self) -> bool {
+        matches!(self.conversation_state, ConversationState::Silent { .. })
+    }
+
+    /// Check if Silent mode was manually requested
+    pub fn is_manual_silent(&self) -> bool {
+        matches!(
+            self.conversation_state,
+            ConversationState::Silent { manual: true }
+        )
     }
 
     /// Update last interaction time to now
@@ -143,7 +157,7 @@ impl BotState {
                 ActiveSubState::Speaking => RgbColor::SPEAKING,   // Green
                 ActiveSubState::Learning => RgbColor::LEARNING,   // Purple
             },
-            ConversationState::Silent => RgbColor::RED, // DND mode, breathing red
+            ConversationState::Silent { .. } => RgbColor::RED, // DND mode, breathing red
         }
     }
 }
@@ -281,7 +295,7 @@ mod tests {
         assert_eq!(state.state_color(), RgbColor::LEARNING);
 
         // Silent state
-        state.conversation_state = ConversationState::Silent;
+        state.conversation_state = ConversationState::Silent { manual: false };
         assert_eq!(state.state_color(), RgbColor::RED);
     }
 }
