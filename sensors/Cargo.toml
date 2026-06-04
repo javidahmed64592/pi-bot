@@ -7,15 +7,20 @@ license.workspace = true
 [dependencies]
 # Internal dependencies
 bot_core = { path = "../bot_core" }
+audio_pipeline = { path = "../audio_pipeline" }
 
-# GPIO for PIR sensor, buttons
+# GPIO for PIR sensor
 rppal = { workspace = true }
 
 # Async runtime
 tokio = { workspace = true }
 
+# JSON parsing for Python subprocess output
+serde_json = { workspace = true }
+
 # Logging
 log = { workspace = true }
+env_logger = { workspace = true }
 
 # Error handling
 anyhow = { workspace = true }

@@ -15,6 +15,9 @@ edition = "2021"
 license = "GPL-3.0-or-later"
 
 [workspace.dependencies]
+# General
+rand = "0.10.1"
+
 # Core async runtime
 tokio = { version = "1.40", features = ["full"] }
 

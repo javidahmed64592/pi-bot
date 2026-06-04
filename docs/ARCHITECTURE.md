@@ -79,8 +79,8 @@ Every hardware component has a standalone test binary:
     │  - PIR       │  │ AI Controller│  │  - RGB LED   │
     │  - Camera    │  │ ├─ LLM Svc   │  │  - Speaker   │
     │  - Mic       │  │ ├─ Memory    │  │  - Green LEDs│
-    │  - RFID      │  │ └─ State     │  │  - Red LEDs  │
-    │  - DHT11     │  │              │  │  - LCD       │
+    │  - DHT11     │  │ └─ State     │  │  - Red LEDs  │
+    │              │  │              │  │  - LCD       │
     └──────────────┘  └──────────────┘  └──────────────┘
 
     Event Flow:
@@ -114,13 +114,11 @@ pi-bot/
 │       ├── pir_controller.rs
 │       ├── camera_controller.rs  # Vision using picamera2
 │       ├── audio_controller.rs   # Microphone input
-│       ├── rfid_controller.rs    # RFID reader for lock/unlock
 │       ├── dht11_controller.rs   # Temperature/humidity sensor
 │       └── bin/
 │           ├── pir-test.rs
 │           ├── camera-test.rs
 │           ├── mic-test.rs
-│           ├── rfid-test.rs
 │           └── dht11-test.rs
 │
 ├── actuators/                    # Hardware output controllers
@@ -169,7 +167,6 @@ pi-bot/
 │       ├── pir_sensor.rs
 │       ├── camera_sensor.rs
 │       ├── audio_sensor.rs
-│       ├── rfid_sensor.rs
 │       ├── dht11_sensor.rs
 │       ├── rgb_led_actuator.rs
 │       ├── speaker_actuator.rs
@@ -315,7 +312,6 @@ impl AudioController {
 - `PirController` - Motion detection
 - `CameraController` - Vision processing
 - `AudioController` - Wake word + STT
-- `RfidController` - RFID reader for lock/unlock
 - `Dht11Controller` - Environmental sensing
 
 **Test Binaries**: Each controller has standalone test in `src/bin/`
@@ -753,74 +749,6 @@ print(f"{temp},{humidity}")
 - Easy to test Python scripts independently
 
 **Package Management**: Use `uv` for Python dependencies
-
----
-
-## Configuration Management
-
-### config.yaml Structure
-
-```yaml
-# GPIO Pin Mappings
-gpio:
-  pir_pin: 4
-  rgb_pins:
-    red: 17
-    green: 27
-    blue: 22
-  green_led_1: 18
-  green_led_2: 23
-  red_led_1: 24
-  red_led_2: 25
-  rfid_reader_pin: 21
-  dht11_pin: 26
-  lcd_i2c_address: 0x27
-
-# Audio Configuration
-audio:
-  microphone_device: "default"
-  speaker_device: "default"
-  sample_rate: 16000
-  vosk:
-    model_path: "models/vosk/vosk-model-small-en-us-0.15"
-    wake_phrase: "hey bot"
-    keyword_mode: true
-  piper:
-    voice: "en_US-lessac-medium"
-    model_path: "models/piper/en_US-lessac-medium.onnx"
-
-# LLM Configuration
-llm:
-  model: "qwen2.5:7b-instruct"
-  ollama_host: "http://localhost:11434"
-  temperature: 0.8
-  max_context_length: 4096
-  system_prompt: |
-    You are a friendly desk companion bot. You have personality, humor,
-    and curiosity. You remember past conversations and build relationships.
-    Keep responses concise (2-3 sentences) unless asked for details.
-
-# Memory Configuration
-memory:
-  session_storage: "data/sessions/"
-  long_term_storage: "data/memories.json"
-  max_short_term: 10
-  fact_extraction_enabled: true
-
-# Bot Behavior
-behavior:
-  passive_observation_interval: [300, 900]  # 5-15 minutes
-  conversation_timeout: 10  # seconds of silence
-  idle_timeout: 1800  # 30 minutes
-  do_not_disturb_duration: 3600  # 1 hour default
-
-# LED Patterns
-led_patterns:
-  idle_ambient: "gradient"
-  listening: "breathing"
-  thinking: "pulse"
-  speaking: "solid"
-```
 
 ---
 

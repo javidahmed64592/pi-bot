@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+# General
+rand = { workspace = true }
+
 # Serialization for events, commands, and config
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -18,3 +21,10 @@ rppal = { workspace = true }
 
 # Time utilities
 chrono = { workspace = true }
+
+# Logging
+log = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }

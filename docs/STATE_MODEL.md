@@ -4,6 +4,14 @@
 
 This document defines Pi Bot's state model that separates **conversation behavior** from **lighting presentation**.
 
+## Key Principles
+
+1. **Presence-Aware Power Management**: Bot enters Silent mode when user leaves desk (PIR timeout), returns to Ready when user returns
+2. **Manual vs Auto Silent**: Track whether Silent was user-requested or auto (PIR), behave differently on exit
+3. **Bot-Initiated Speech**: Observing → Active(Speaking) directly (bot speaks first, doesn't wait for user)
+4. **Always Responsive**: Bot responds to wake word even in Silent mode (just more concisely)
+5. **Active Overrides Ambient**: Conversation states always show state-based colors, even if ambient lighting is configured
+
 ## Core Insight
 
 The key design decision is to treat **conversation state** and **lighting mode** as **independent orthogonal dimensions**:
@@ -35,10 +43,10 @@ These determine **what the bot does** (when it talks, when it listens, when it's
 
 **Transitions**:
 - → **Observing**: Random timer (5-15 min) OR interesting sensor event
-- → **Active**: Wake phrase detected
-- → **Silent**: User requests Do Not Disturb
+- → **Active(Listening)**: Wake phrase detected
+- → **Silent (auto)**: PIR timeout (no presence detected for idle_timeout)
 
-**Default lighting**: StateBased (minimal/off)
+**Default lighting**: StateBased (green breathing)
 
 ---
 
@@ -47,65 +55,80 @@ These determine **what the bot does** (when it talks, when it listens, when it's
 
 **Behavior**:
 - Evaluates context (user busy? appropriate time? presence?)
-- Rolls dice (20% chance to initiate conversation)
-- If yes: generates observation-based opener → Active
+- Decides whether to initiate conversation
+- If yes: generates observation-based opener → Active(Speaking)
 - If no: returns to Ready
 
 **Duration**: Brief (2-5 seconds max)
 
 **Transitions**:
-- → **Active**: Bot decides to speak
+- → **Active(Speaking)**: Bot decides to speak (generates greeting/observation)
 - → **Ready**: Bot decides not to speak
 
-**LED hint**: Subtle dim pulse (if StateBased), otherwise no change
+**LED hint**: Blue breathing (if StateBased), otherwise ambient pattern continues
 
 ---
 
 ### 3. Active (In Conversation)
 **What it means**: Bot is actively engaged in conversation
 
-**Sub-states** (cycles through these):
-- **Listening**: Capturing speech from microphone
+**Sub-states** (flow depends on how conversation started):
+
+**If user initiated (wake word)**:
+```
+Listening → Thinking → Learning → Speaking → Ready
+```
+
+**If bot initiated (Observing)**:
+```
+Speaking → Ready
+(Bot speaks its observation, then waits for wake word to continue)
+```
+
+**Sub-state details**:
+- **Listening**: Capturing speech from microphone (after wake word)
 - **Thinking**: Processing input through LLM
 - **Learning**: Storing important memory (brief)
 - **Speaking**: Playing TTS audio
 
-**Flow**:
-```
-Listening → Thinking → [Learning] → Speaking → Listening → ...
-```
-
-**Exit condition**: 10 seconds of silence → Ready
+**Exit condition**: After Speaking completes → Ready (10s conversation timeout if in Listening)
 
 **Transitions**:
-- → **Listening**: User is speaking
-- → **Ready**: 10s of silence OR conversation naturally ends
-- → **Silent**: User requests Do Not Disturb mid-conversation
+- → **Ready**: After speaking OR 10s of silence in Listening
+- → **Silent (manual)**: User requests Do Not Disturb mid-conversation
 
 **LED behavior**:
-- **StateBased mode**: Orange (listening) → Blue (thinking) → Green (speaking)
-- **Ambient mode**: Pattern continues (optional: dim during conversation)
+- **StateBased mode**: Orange (listening) → Blue (thinking) → Purple (learning) → Green (speaking)
+- **Ambient mode**: Active state OVERRIDES ambient (state-based colors during conversation)
 
 ---
 
 ### 4. Silent (Do Not Disturb)
 **What it means**: Bot won't initiate conversations, minimal responses only
 
+**Two modes**:
+- **Auto Silent**: Entered via PIR timeout (no presence detected)
+- **Manual Silent**: Entered via user DND request
+
 **Behavior**:
 - No conversation initiation (never enters Observing)
-- Still monitors sensors passively
-- Still responds to wake phrase, but concisely
+- Still monitors sensors passively (low power)
+- Still responds to wake phrase, but with short, concise responses
 - No follow-up questions or chatty behavior
 
-**Duration**:
-- User-specified (default: 1 hour)
-- Or until user explicitly ends it
-
 **Transitions**:
-- → **Ready**: Timer expires OR user says "meeting's over" / similar
-- → **Active**: User says wake phrase (for brief, essential responses only)
 
-**Default lighting**: Minimal (dim or off)
+**From Auto Silent (PIR triggered)**:
+- → **Ready**: Presence detected (PIR senses user returned)
+- → **Active(Listening)**: Wake phrase detected
+- Optional: Bot greets user when transitioning to Ready
+
+**From Manual Silent (user requested)**:
+- → **Ready**: User explicitly requests wake up
+- → **Active(Listening)**: Wake phrase detected
+- Does NOT auto-exit on presence (user must explicitly wake bot)
+
+**Default lighting**: StateBased (red breathing)
 
 ---
 
@@ -119,13 +142,13 @@ These determine **what you see** (LED color, pattern, brightness):
 **Patterns**:
 | Conversation State | LED Pattern |
 |-------------------|-------------|
-| Ready | Minimal/off (or very dim) |
-| Observing | Subtle dim pulse |
+| Ready | Green breathing |
+| Observing | Blue breathing |
 | Active.Listening | Orange breathing animation |
 | Active.Thinking | Blue pulsing |
 | Active.Speaking | Solid green |
-| Active.Learning | Brief purple flash |
-| Silent | Dim white or off |
+| Active.Learning | Purple pulsing |
+| Silent | Red breathing |
 
 **Use case**: Normal operation, clear visual feedback
 
@@ -207,27 +230,9 @@ This creates clear visual language: "green = go" and "red = stop"
 | **All other states** | Off (green LEDs active instead) |
 
 **Key Points**:
-- Breathing = Intentional silence (DND mode, RFID locked)
+- Breathing = Intentional silence (DND mode)
 - Flashing = System error (component failure, critical issue)
 - Red LEDs only active when green LEDs are off
-
-### RFID Lock Integration
-
-The status LEDs integrate with the RFID lock/unlock feature:
-
-**Lock Sequence** (RFID tap):
-1. Bot enters Silent state
-2. Green LEDs turn off
-3. Red LEDs start breathing
-4. Bot refuses all wake phrase requests
-5. Visual cue: "Bot is locked/unavailable"
-
-**Unlock Sequence** (RFID tap):
-1. Bot exits Silent state → Ready state
-2. Red LEDs turn off
-3. Green LEDs turn solid
-4. Bot greets user
-5. Visual cue: "Bot is ready again"
 
 ### Status LED + RGB LED Combinations
 
@@ -239,7 +244,7 @@ The status LEDs work **in parallel** with RGB LED states:
 | **Coding with ambiance** | Ready | Ambient (cool gradient) | Green solid |
 | **Bot listening** | Active.Listening | StateBased (orange breathing) | Green breathing |
 | **Ambient + talking** | Active.Speaking | Ambient (continues) | Green breathing |
-| **Locked with ambiance** | Silent | Ambient (warm) | Red breathing |
+| **DND/Silent mode** | Silent | Ambient (warm) | Red breathing |
 | **Meeting mode** | Silent | Minimal | Red breathing |
 | **System error** | Any | StateBased (red) | Red flashing |
 
@@ -247,7 +252,6 @@ The status LEDs work **in parallel** with RGB LED states:
 - Status LEDs provide consistent feedback regardless of RGB mode
 - RGB can show mood/ambiance while status LEDs show availability
 - No confusion: green = available, red = unavailable
-- RFID lock status always visible
 
 ### Implementation Patterns
 
@@ -273,6 +277,96 @@ The status LEDs work **in parallel** with RGB LED states:
 
 ---
 
+## Complete State Transition Diagram
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Conversation States                       │
+│                                                             │
+│  ┌─────────┐                                               │
+│  │ Ready   │◄──────────────────┐                          │
+│  │ (green  │                    │                          │
+│  │breathing)│                    │                          │
+│  └────┬────┘                    │                          │
+│       │                         │                          │
+│       │ PIR timeout             │ Presence detected        │
+│       │ (no motion)             │ (PIR)                    │
+│       ▼                         │                          │
+│  ┌──────────┐                   │                          │
+│  │ Silent   │                   │                          │
+│  │ (auto)   │───────────────────┘                          │
+│  │ (red     │                                               │
+│  │breathing)│                                               │
+│  └────┬────┘                                               │
+│       │                                                     │
+│       │ User DND                                           │
+│       │ request                                            │
+│       ▼                                                     │
+│  ┌──────────┐      User wake up request                   │
+│  │ Silent   │──────────────────────────┐                  │
+│  │ (manual) │                           │                  │
+│  │ (red     │                           ▼                  │
+│  │breathing)│                      ┌─────────┐            │
+│  └──────────┘                      │ Ready   │            │
+│                                     └─────────┘            │
+│                                                             │
+│  ┌─────────┐      Random/Interesting                      │
+│  │ Ready   │──────────────────────┐                        │
+│  └─────────┘                      │                        │
+│       │                            ▼                        │
+│       │ Wake word            ┌──────────┐                 │
+│       │                      │Observing │                 │
+│       ▼                      │ (blue    │                 │
+│  ┌──────────────┐            │breathing)│                 │
+│  │ Active       │            └─────┬────┘                 │
+│  │ (Listening)  │                  │                        │
+│  │ (orange      │◄─────────────────┘                        │
+│  │ breathing)   │  Decides to speak                        │
+│  └──────┬───────┘                  │                        │
+│         │                          │ Decides not           │
+│         │                          ▼                        │
+│         │                     ┌─────────┐                 │
+│         │                     │ Ready   │                 │
+│         │                     └─────────┘                 │
+│         │                                                   │
+│         │ Speech                                           │
+│         │ captured                                         │
+│         ▼                                                   │
+│  ┌──────────────┐                                          │
+│  │ Active       │                                          │
+│  │ (Thinking)   │                                          │
+│  │ (blue pulse) │                                          │
+│  └──────┬───────┘                                          │
+│         │                                                   │
+│         │ LLM response                                     │
+│         ▼                                                   │
+│  ┌──────────────┐                                          │
+│  │ Active       │                                          │
+│  │ (Learning)   │                                          │
+│  │(purple pulse)│                                          │
+│  └──────┬───────┘                                          │
+│         │                                                   │
+│         │ Memory saved                                     │
+│         ▼                                                   │
+│  ┌──────────────┐                                          │
+│  │ Active       │                                          │
+│  │ (Speaking)   │◄─────────────────────────────────────┐  │
+│  │ (green solid)│  Bot decides to speak (Observing)    │  │
+│  └──────┬───────┘                                       │  │
+│         │                                                │  │
+│         │ TTS complete                                   │  │
+│         ▼                                                │  │
+│    ┌─────────┐                                          │  │
+│    │ Ready   │──────────────────────────────────────────┘  │
+│    └─────────┘                                             │
+│                                                             │
+│  Note: Wake word works in ANY state (including Silent)     │
+│        Active state ALWAYS overrides ambient lighting      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## State Combinations
 
 ### Common Scenarios
@@ -289,7 +383,84 @@ The status LEDs work **in parallel** with RGB LED states:
 
 ### State Transition Examples
 
-**Example 1: Bedtime**
+**Example 1: User Leaves Desk**
+```
+1. Initial state: Ready (green breathing, presence detected)
+
+2. User walks away for coffee (PIR detects no motion)
+   After idle_timeout (default 30 min): Ready → Silent (auto)
+   State: Silent (auto) + Red breathing
+
+3. User returns to desk (PIR detects motion)
+   Immediately: Silent (auto) → Ready
+   State: Ready + Green breathing
+   Optional: Bot says "Welcome back!"
+```
+
+**Example 2: Bot Initiates Conversation**
+```
+1. User is working (Ready state, presence detected)
+   State: Ready + Green breathing
+
+2. Bot's camera notices interesting activity
+   State: Ready → Observing
+   LED: Green → Blue breathing (brief)
+
+3. Bot decides to speak (generates observation)
+   State: Observing → Active(Speaking)
+   LED: Blue → Green solid
+   Bot: "I noticed you're looking at travel photos. Planning a trip?"
+
+4. Speaking completes
+   State: Active(Speaking) → Ready
+   LED: Green solid → Green breathing
+   (Bot waits for wake word if user wants to respond)
+```
+
+**Example 3: User Conversation**
+```
+1. User says "Hey Bot"
+   State: Ready → Active(Listening)
+   LED: Green breathing → Orange breathing
+
+2. User: "What's the weather tomorrow?"
+   State: Active(Listening) → Active(Thinking)
+   LED: Orange breathing → Blue pulse
+   (Bot queries LLM)
+
+3. LLM responds, bot stores exchange
+   State: Active(Thinking) → Active(Learning)
+   LED: Blue pulse → Purple pulse (brief)
+
+4. Bot starts speaking
+   State: Active(Learning) → Active(Speaking)
+   LED: Purple pulse → Green solid
+   Bot: "Tomorrow will be sunny, high of 22°C"
+
+5. Speaking completes
+   State: Active(Speaking) → Ready
+   LED: Green solid → Green breathing
+```
+
+**Example 4: Bedtime (Manual DND)**
+```
+1. User: "Hey Bot, I'm going to bed, don't disturb me"
+   State: Ready → Silent (manual)
+   LED: Green breathing → Red breathing
+
+2. User sleeps (8 hours pass, no presence)
+   State: Remains Silent (manual) - does NOT auto-exit on PIR
+
+3. User wakes up and says "Hey Bot, good morning"
+   Bot responds but stays in Silent mode (concise response)
+   State: Remains Silent (manual) after response
+
+4. User: "Hey Bot, you can talk normally now"
+   State: Silent (manual) → Ready
+   LED: Red breathing → Green breathing
+```
+
+**Example 5: Coding with Ambient Lighting**
 ```
 1. User: "Hey Bot, light up the room but don't talk to me"
    State: Ready + StateBased
@@ -388,6 +559,46 @@ Users can configure:
 3. **Silent duration**: Default Do Not Disturb timeout (1 hour default)
 4. **Ambient persistence**: Whether ambient lighting continues during Active state
 5. **Default lighting**: StateBased or Ambient on startup
+
+### Customizing RGB LED Colors
+
+All state colors and patterns are fully configurable in `config/config.yaml`. Each conversation state can have a custom color and pattern:
+
+```yaml
+rgb_led:
+  ready:
+    pattern: "breathing"
+    color: [0, 255, 0]  # Green - change to your preference!
+
+  observing:
+    pattern: "breathing"
+    color: [0, 0, 255]  # Blue
+
+  silent:
+    pattern: "breathing"
+    color: [255, 0, 0]  # Red
+
+  active:
+    listening:
+      pattern: "breathing"
+      color: [255, 165, 0]  # Orange
+
+    thinking:
+      pattern: "pulse"
+      color: [0, 0, 255]  # Blue
+
+    speaking:
+      pattern: "solid"
+      color: [0, 255, 0]  # Green
+
+    learning:
+      pattern: "pulse"
+      color: [128, 0, 128]  # Purple
+```
+
+**Available patterns**: `breathing`, `pulse`, `solid`, `gradient`, `rainbow`
+
+**Color format**: `[R, G, B]` where each value is 0-255
 
 ---
 

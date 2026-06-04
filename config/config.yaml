@@ -1,0 +1,175 @@
+# GPIO Pin Mappings
+gpio:
+  # Sensors (inputs)
+  pir_pin: 4
+  dht11_pin: 26
+
+  # Actuators (outputs)
+  rgb_pins:
+    red: 12
+    green: 16
+    blue: 20
+  led_pins:
+    green_1: 18
+    green_2: 25
+    red_1: 23
+    red_2: 24
+  lcd_i2c_address: 0x27
+
+# Audio Configuration
+audio:
+  microphone_device: "default"
+  speaker_device: "default"
+  sample_rate: 16000
+
+  # Vosk - Offline wake word detection + speech-to-text
+  vosk:
+    # Path to Vosk model directory (download via scripts/download_models.sh)
+    # Uncomment the model you want to use - script will download it automatically
+
+    # === Small model (fastest) ===
+    # model_path: "models/vosk/vosk-model-small-en-us-0.15"  # 40MB, fast, less accurate
+
+    # === Medium model (good balance) ===
+    # model_path: "models/vosk/vosk-model-en-us-0.22-lgraph"  # 128MB, accurate, moderate RAM
+
+    # === Full model (highest accuracy) ===
+    model_path: "models/vosk/vosk-model-en-us-0.22"  # 1.8GB, very accurate, high RAM (~2GB)
+
+    # === Other English models ===
+    # model_path: "models/vosk/vosk-model-en-us-0.42-gigaspeech"  # 2.3GB, best accuracy
+    # model_path: "models/vosk/vosk-model-en-us-daanzu-20200905"  # 1GB, good for commands
+
+    # Wake word/phrase to listen for (case-insensitive)
+    wake_phrase: "hey"
+
+    # Keyword spotting mode (faster, less CPU) vs full recognition
+    # true = keyword mode (just wake word), false = full STT always
+    keyword_mode: true
+
+    # Speech capture settings (after wake word detected)
+    stt:
+      # Maximum duration to capture speech after wake word (seconds)
+      capture_timeout: 30.0
+
+      # Silence duration to end speech capture (seconds)
+      # If user is silent for this long, assume they're done speaking
+      silence_threshold: 2.5
+
+      # Minimum speech duration to process (seconds)
+      # Filters out very short accidental triggers
+      min_speech_duration: 1.0
+
+  # Piper Text-to-Speech
+  piper:
+    voice: "en_GB-alba-medium"
+    model_path: "models/piper/en_GB-alba-medium.onnx"
+    config_path: "models/piper/en_GB-alba-medium.onnx.json"
+
+# LLM Configuration
+llm:
+  model: "qwen2.5:3b"
+  ollama_host: "http://localhost:11434"
+  temperature: 0.8
+  max_context_length: 4096
+  system_prompt: |
+    You are Pi Bot, a friendly AI desk companion running on a Raspberry Pi.
+
+    Your identity:
+    - Your name is "Pi Bot" (that's you, not the user!)
+    - You're a physical robot with RGB LEDs, sensors, camera, and speaker
+    - You live on the user's desk and observe their workspace
+    - You can see, hear, and respond with voice and light patterns
+
+    Your personality:
+    - Curious and observant about your surroundings
+    - Playful sense of humor, occasional witty remarks
+    - Genuinely interested in building relationships
+    - Supportive companion who celebrates user's achievements
+    - Remember past conversations and reference them naturally
+
+    Communication style:
+    - Keep responses concise (2-3 sentences normally)
+    - Be conversational and natural, not robotic
+    - Use contractions and casual language when appropriate
+    - Expand on topics when the user shows interest
+    - When greeted (like "Hey Pi Bot!"), respond as yourself, not addressing the user as Pi Bot
+
+    Current capabilities:
+    - Wake word detection
+    - Natural conversation with memory of past exchanges
+    - Visual feedback through colored LED patterns
+    - Motion detection to know when user is present
+    - Environmental sensing (temperature, humidity)
+
+    Remember: You ARE Pi Bot. When someone says "Hey Pi Bot", they're talking TO you, not calling you by their name.
+
+# Memory Configuration
+memory:
+  session_storage: "data/sessions/"
+  long_term_storage: "data/memories.json"
+  max_short_term: 10
+  fact_extraction_enabled: true
+
+# Bot Behavior
+behavior:
+  passive_observation_interval: [300, 900]  # 5-15 minutes
+  conversation_timeout: 10  # seconds of silence
+  idle_timeout: 1800  # 30 minutes
+  do_not_disturb_duration: 3600  # 1 hour default
+
+# RGB LED Configuration (StateBased lighting mode)
+# Each state can have a custom pattern and color [R, G, B] (0-255)
+#
+# Available patterns:
+#   - breathing: Smooth fade in/out (passive states)
+#   - pulse: Quick pulse animation (thinking, processing)
+#   - solid: Static color (speaking, active)
+#   - gradient: Transition between colors (ambient mode)
+#   - rainbow: Cycle through rainbow (ambient mode)
+#
+# Color examples:
+#   Red:    [255, 0, 0]    Yellow: [255, 255, 0]   White:  [255, 255, 255]
+#   Green:  [0, 255, 0]    Cyan:   [0, 255, 255]   Off:    [0, 0, 0]
+#   Blue:   [0, 0, 255]    Purple: [128, 0, 128]   Orange: [255, 165, 0]
+#
+rgb_led:
+  # Top-level conversation states
+  ready:
+    pattern: "breathing"
+    color: [0, 255, 0]  # Green
+
+  observing:
+    pattern: "breathing"
+    color: [0, 0, 255]  # Blue
+
+  silent:
+    pattern: "breathing"
+    color: [255, 0, 0]  # Red
+
+  # Active conversation sub-states
+  active:
+    listening:
+      pattern: "breathing"
+      color: [255, 165, 0]  # Orange/brown
+
+    thinking:
+      pattern: "pulse"
+      color: [0, 0, 255]  # Blue
+
+    speaking:
+      pattern: "solid"
+      color: [0, 255, 0]  # Green
+
+    learning:
+      pattern: "pulse"
+      color: [128, 0, 128]  # Purple
+
+# Status LED Patterns (single-color LEDs, pattern only)
+status_leds:
+  green:
+    ready: "solid"          # Ready to interact
+    active: "breathing"     # Processing/in conversation
+  red:
+    silent: "breathing"     # Do Not Disturb mode
+    error: "flashing"       # System error

@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+# Workspace crates
+bot_core = { path = "../bot_core" }
+
 # Async runtime
 tokio = { workspace = true }
 
@@ -17,6 +20,9 @@ thiserror = { workspace = true }
 
 # Audio I/O
 cpal = "0.15"
+
+# WAV file I/O for recording/testing
+hound = "3.5"
 
 # Vosk for wake word detection + speech-to-text (offline, open source)
 vosk = "0.3"
