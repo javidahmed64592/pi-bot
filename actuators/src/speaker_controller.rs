@@ -68,11 +68,17 @@ pub struct SpeakerController {
     stream_handle: OutputStreamHandle,
 
     /// Current playback sink (if any)
-    current_sink: Arc<Mutex<Option<Sink>>>,
+    /// Wrapped in Arc so we can clone it out for waiting
+    current_sink: Arc<Mutex<Option<Arc<Sink>>>>,
 
     /// Device name for logging
     device_name: String,
 }
+
+// SAFETY: SpeakerController is only used within a single task and never shared
+// across threads. The rodio types it contains are not Send, but this is safe
+// because we guarantee single-threaded access.
+unsafe impl Send for SpeakerController {}
 
 impl SpeakerController {
     /// Create a new speaker controller
@@ -140,10 +146,10 @@ impl SpeakerController {
         // Append to sink and play
         sink.append(source);
 
-        // Store sink reference
+        // Store sink reference wrapped in Arc
         {
             let mut current = self.current_sink.lock().unwrap();
-            *current = Some(sink);
+            *current = Some(Arc::new(sink));
         }
 
         info!("Started audio playback on {}", self.device_name);
@@ -183,10 +189,10 @@ impl SpeakerController {
         // Append to sink and play
         sink.append(source);
 
-        // Store sink reference
+        // Store sink reference wrapped in Arc
         {
             let mut current = self.current_sink.lock().unwrap();
-            *current = Some(sink);
+            *current = Some(Arc::new(sink));
         }
 
         info!("Started WAV audio playback on {}", self.device_name);
@@ -226,8 +232,13 @@ impl SpeakerController {
     /// Blocks until the current audio finishes playing.
     /// Returns immediately if nothing is playing.
     pub fn wait_for_completion(&self) {
-        let current = self.current_sink.lock().unwrap();
-        if let Some(sink) = current.as_ref() {
+        // Clone the Arc to avoid holding the lock while sleeping
+        let sink_option = {
+            let current = self.current_sink.lock().unwrap();
+            current.clone()
+        };
+
+        if let Some(sink) = sink_option {
             sink.sleep_until_end();
             debug!("Audio playback completed");
         }

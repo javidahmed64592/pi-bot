@@ -5,6 +5,7 @@
 
 use anyhow::Result;
 use bot_core::Event;
+use log::{debug, info};
 use rppal::gpio::{Gpio, InputPin, Level};
 use std::time::{Duration, Instant};
 
@@ -33,14 +34,14 @@ impl PirSensorController {
         let pin = gpio.get(pin_number)?.into_input();
         let previous_state = pin.read();
 
-        println!("[{}] Initialized on GPIO {}", label, pin_number);
-        println!("[{}] Timeout: {:?}", label, timeout_duration);
+        info!("[{}] Initialized on GPIO {}", label, pin_number);
+        info!("[{}] Timeout: {:?}", label, timeout_duration);
 
         let (last_motion_time, timeout_notified) = if previous_state == Level::High {
-            println!("[{}] Initial state: MOTION DETECTED", label);
+            info!("[{}] Initial state: MOTION DETECTED", label);
             (Some(Instant::now()), false)
         } else {
-            println!("[{}] Initial state: No motion", label);
+            info!("[{}] Initial state: No motion", label);
             (None, false)
         };
 
@@ -74,14 +75,14 @@ impl PirSensorController {
             match current_state {
                 Level::High => {
                     // Motion detected (LOW → HIGH transition)
-                    println!("[{}] Motion DETECTED!", self.label);
+                    info!("[{}] Motion DETECTED!", self.label);
                     self.last_motion_time = Some(Instant::now());
                     self.timeout_notified = false;
                     return Some(Event::PresenceDetected);
                 }
                 Level::Low => {
                     // PIR hardware timeout expired (HIGH → LOW transition)
-                    println!("[{}] PIR hardware timeout (pin LOW)", self.label);
+                    debug!("[{}] PIR hardware timeout (pin LOW)", self.label);
                 }
             }
         }
@@ -90,7 +91,7 @@ impl PirSensorController {
         if let Some(last_motion) = self.last_motion_time {
             let elapsed = last_motion.elapsed();
             if elapsed >= self.timeout_duration && !self.timeout_notified {
-                println!(
+                info!(
                     "[{}] Presence timeout: no motion for {:?}",
                     self.label, elapsed
                 );

@@ -29,6 +29,11 @@ pub enum Event {
     /// The String contains the transcribed text from the user
     SpeechCaptured(String),
 
+    /// Speech playback has completed
+    /// Sent by speaker actuator when TTS audio finishes playing
+    /// Used to synchronize state transitions (Speaking → Ready)
+    SpeechComplete,
+
     /// Ambient noise level detected (0-100)
     /// Could be used to detect if user is in a meeting, music playing, etc.
     AmbientNoiseLevel(u8),

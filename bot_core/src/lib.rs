@@ -45,7 +45,7 @@ pub mod state;
 // Re-exports
 // ============================================================================
 
-pub use commands::Command;
+pub use commands::{Command, LedPattern, StatusLedPattern};
 pub use config::{load_config, load_default_config, SttConfig, SystemConfig};
 pub use events::Event;
 pub use state::{

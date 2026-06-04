@@ -231,10 +231,27 @@ impl RgbColor {
     // Convert from HSV color space
     // Useful for creating rainbow effects and gradients
     // h: hue (0.0-360.0), s: saturation (0.0-1.0), v: value/brightness (0.0-1.0)
-    // TODO: Implement this for advanced color effects (Phase 2)
-    // pub fn from_hsv(h: f32, s: f32, v: f32) -> Self {
-    //     // HSV to RGB conversion algorithm
-    // }
+    pub fn from_hsv(h: f32, s: f32, v: f32) -> Self {
+        let h = h % 360.0;
+        let c = v * s;
+        let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
+        let m = v - c;
+
+        let (r, g, b) = match h as u32 {
+            0..=59 => (c, x, 0.0),
+            60..=119 => (x, c, 0.0),
+            120..=179 => (0.0, c, x),
+            180..=239 => (0.0, x, c),
+            240..=299 => (x, 0.0, c),
+            _ => (c, 0.0, x),
+        };
+
+        Self::new(
+            ((r + m) * 255.0) as u8,
+            ((g + m) * 255.0) as u8,
+            ((b + m) * 255.0) as u8,
+        )
+    }
 }
 
 impl From<(u8, u8, u8)> for RgbColor {

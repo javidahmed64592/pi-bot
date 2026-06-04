@@ -209,6 +209,7 @@ async fn handle_event(
     match event {
         Event::WakeWordDetected => handle_wake_word(state, cmd_tx).await?,
         Event::SpeechCaptured(text) => handle_speech_captured(text, state, cmd_tx).await?,
+        Event::SpeechComplete => handle_speech_complete(state, cmd_tx).await?,
         Event::PresenceDetected => handle_presence_detected(state, cmd_tx).await?,
         Event::NoPresenceSince(duration) => handle_no_presence(duration, state, cmd_tx).await?,
         Event::AmbientNoiseLevel(level) => handle_ambient_noise(level, state, cmd_tx).await?,
@@ -246,6 +247,30 @@ async fn handle_wake_word(
         .send(Command::StartListening)
         .await
         .context("Failed to send StartListening command")?;
+
+    Ok(())
+}
+
+/// Handle speech playback completion
+async fn handle_speech_complete(
+    state: &mut ControllerState,
+    cmd_tx: &mpsc::Sender<Command>,
+) -> Result<()> {
+    info!("Speech playback complete");
+
+    // Only transition if we're actually in Speaking state
+    if matches!(
+        state.bot_state.conversation_state,
+        ConversationState::Active(ActiveSubState::Speaking)
+    ) {
+        // Now it's safe to return to ready state
+        return_to_ready_state(state, cmd_tx).await?;
+    } else {
+        debug!(
+            "Received SpeechComplete but not in Speaking state (current: {:?})",
+            state.bot_state.conversation_state
+        );
+    }
 
     Ok(())
 }
@@ -316,9 +341,8 @@ async fn handle_speech_captured(
         .await
         .context("Failed to send speak command")?;
 
-    // Return to ready state (speaker will complete async)
-    // Note: In Phase 2, we might want to wait for TTS completion event
-    return_to_ready_state(state, cmd_tx).await?;
+    // Stay in Speaking state - we'll transition to Ready when we receive SpeechComplete event
+    // This prevents the microphone from listening to the bot's own voice
 
     Ok(())
 }
