@@ -28,3 +28,6 @@ thiserror = { workspace = true }
 
 # Time utilities for memory timestamps
 chrono = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.13"

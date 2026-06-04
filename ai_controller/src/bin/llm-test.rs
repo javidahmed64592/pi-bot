@@ -26,10 +26,10 @@
 //! - Ollama running locally (http://localhost:11434)
 //! - Qwen2.5 7B model downloaded: `ollama pull qwen2.5:7b-instruct`
 
-use ai_controller::{LlmService, Message};
+use ai_controller::{LlmService, MemoryService};
 use anyhow::{Context, Result};
 use bot_core::config::load_config;
-use log::error;
+use log::{error, info};
 use std::io::{self, Write};
 
 #[tokio::main]
@@ -75,13 +75,24 @@ async fn main() -> Result<()> {
 
     println!();
     println!("Ready for conversation! Type your messages below.");
-    println!("Commands: 'quit'/'exit'/'q' to exit, 'clear' to clear history");
+    println!(
+        "Commands: 'quit'/'exit'/'q' to exit, 'clear' to clear history, 'stats' for memory stats"
+    );
     println!("─────────────────────────────────────────────────────");
     println!();
 
-    // Conversation loop
-    let mut history: Vec<Message> = Vec::new();
-    let mut exchange_count = 0;
+    // Initialize memory service
+    let mut memory =
+        MemoryService::new(config.memory.clone()).context("Failed to initialize memory service")?;
+
+    info!("Memory initialized: {}", memory.stats());
+    if memory.session_size() > 0 {
+        println!(
+            "📝 Resuming session with {} previous exchanges",
+            memory.session_size()
+        );
+        println!();
+    }
 
     loop {
         // Get user input
@@ -104,9 +115,14 @@ async fn main() -> Result<()> {
         }
 
         if input.to_lowercase() == "clear" {
-            history.clear();
-            exchange_count = 0;
-            println!("✓ Conversation history cleared");
+            memory.clear_short_term();
+            println!("✓ Short-term memory cleared");
+            println!();
+            continue;
+        }
+
+        if input.to_lowercase() == "stats" {
+            println!("📊 {}", memory.stats());
             println!();
             continue;
         }
@@ -117,7 +133,10 @@ async fn main() -> Result<()> {
 
         let start = std::time::Instant::now();
 
-        match service.generate(input, &history).await {
+        // Get conversation context from memory
+        let context = memory.get_context();
+
+        match service.generate(input, &context).await {
             Ok(response) => {
                 let duration = start.elapsed();
 
@@ -127,23 +146,12 @@ async fn main() -> Result<()> {
                 println!(
                     "  [Generated in {:.1}s, {} exchanges in context]",
                     duration.as_secs_f32(),
-                    exchange_count
+                    memory.short_term_size()
                 );
                 println!();
 
-                // Update history (keep last 10 exchanges)
-                history.push(Message::user(input));
-                history.push(Message::assistant(response));
-
-                exchange_count += 1;
-
-                // Trim history to prevent context overflow
-                const MAX_HISTORY: usize = 10 * 2; // 10 exchanges = 20 messages
-                if history.len() > MAX_HISTORY {
-                    let trim_count = history.len() - MAX_HISTORY;
-                    history.drain(0..trim_count);
-                    exchange_count = 10;
-                }
+                // Add exchange to memory (auto-saves to disk)
+                memory.add_exchange(input, &response);
             }
             Err(e) => {
                 error!("Failed to generate response: {}", e);

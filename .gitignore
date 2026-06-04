@@ -187,3 +187,6 @@ models/
 
 # Audio recordings from testing
 *.wav
+
+# Memory system data (session storage and long-term memory)
+data/

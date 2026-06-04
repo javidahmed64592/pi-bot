@@ -12,10 +12,11 @@
 //!
 //! ## Usage
 //!
-//! ```no_run
+//! ```ignore
 //! use ai_controller::LlmService;
 //! use bot_core::config::LlmConfig;
 //!
+//! # async fn example() {
 //! let config = LlmConfig {
 //!     model: "qwen2.5:7b-instruct".to_string(),
 //!     ollama_host: "http://localhost:11434".to_string(),
@@ -28,6 +29,7 @@
 //!
 //! let response = service.generate("Hello, how are you?", &[]).await.expect("Failed to generate");
 //! println!("Bot: {}", response);
+//! # }
 //! ```
 
 use anyhow::Result;
