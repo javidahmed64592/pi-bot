@@ -40,8 +40,7 @@ async fn main() -> Result<()> {
     info!("=== Pi Bot TTS Test ===");
 
     // Load configuration
-    let config = load_config("config/config.yaml")
-        .context("Failed to load configuration")?;
+    let config = load_config("config/config.yaml").context("Failed to load configuration")?;
 
     // Get test text from command line or use default
     let args: Vec<String> = env::args().collect();
@@ -80,10 +79,7 @@ async fn run_tts_test(config: &SystemConfig, text: &str) -> Result<()> {
         .synthesize(text)
         .await
         .context("Failed to synthesize speech")?;
-    info!(
-        "  ✓ Synthesized {} bytes of audio data",
-        audio_data.len()
-    );
+    info!("  ✓ Synthesized {} bytes of audio data", audio_data.len());
 
     // Step 3: Initialize speaker
     info!("Step 3: Initializing speaker...");
@@ -96,9 +92,7 @@ async fn run_tts_test(config: &SystemConfig, text: &str) -> Result<()> {
 
     // Step 4: Play audio
     info!("Step 4: Playing audio...");
-    speaker
-        .play(&audio_data)
-        .context("Failed to play audio")?;
+    speaker.play(&audio_data).context("Failed to play audio")?;
     info!("  ✓ Audio playback started");
 
     // Wait for playback to complete

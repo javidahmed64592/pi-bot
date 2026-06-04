@@ -8,8 +8,8 @@
 //! - Controls both red LED channels
 //! - Handles graceful shutdown
 
-use anyhow::Result;
 use actuators::StatusLedController;
+use anyhow::Result;
 use bot_core::{Command, StatusLedPattern, SystemConfig};
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
@@ -32,14 +32,8 @@ pub async fn run_red_led_actuator(
     log::info!("[Red LED Actuator Task] Starting...");
 
     // Initialize both red LED controllers
-    let mut red_led_1 = StatusLedController::new(
-        config.gpio.led_pins.red_1,
-        "Red LED 1",
-    )?;
-    let mut red_led_2 = StatusLedController::new(
-        config.gpio.led_pins.red_2,
-        "Red LED 2",
-    )?;
+    let mut red_led_1 = StatusLedController::new(config.gpio.led_pins.red_1, "Red LED 1")?;
+    let mut red_led_2 = StatusLedController::new(config.gpio.led_pins.red_2, "Red LED 2")?;
 
     log::info!("[Red LED Actuator Task] Initialized");
 
