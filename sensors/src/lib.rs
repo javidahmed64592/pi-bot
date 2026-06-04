@@ -11,8 +11,21 @@
 //! - Ultrasonic sensors (proximity detection)
 //! - DHT11 controller (temperature/humidity)
 
+// ============================================================================
+// Module Declarations
+// ============================================================================
+
+pub mod audio_controller;
+
+// ============================================================================
+// Re-exports
+// ============================================================================
+
+pub use audio_controller::{AudioController, AudioError};
+
 // TODO: Phase 1.5 - Implement PirSensorController
-// TODO: Phase 1.9 - Implement AudioController for microphone capture
+// TODO: Phase 2 - Implement CameraController
+// TODO: Phase 2 - Implement Dht11Controller
 
 #[cfg(test)]
 mod tests {
