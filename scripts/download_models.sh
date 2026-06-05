@@ -189,4 +189,3 @@ echo -e "  LLM:   ${GREEN}${LLM_MODEL}${NC}"
 echo
 echo "You can now run the system with:"
 echo -e "  ${GREEN}cargo run --bin runner${NC}"
-echo
