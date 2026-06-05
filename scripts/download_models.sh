@@ -168,7 +168,7 @@ else
     echo "   Pulling LLM model from Ollama registry..."
     ollama pull "${LLM_MODEL}" || {
         echo -e "   ${RED}✗${NC} Failed to pull LLM model from Ollama"
-        echo "   Make sure the model name in ${BLUE}config.yaml${NC} is correct and that Ollama is running"
+        echo -e "   Make sure the model name in ${BLUE}config.yaml${NC} is correct and that Ollama is running"
         exit 1
     }
     echo -e "   ${GREEN}✓${NC} LLM model pulled successfully"

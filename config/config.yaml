@@ -55,10 +55,10 @@ audio:
 
 # LLM Configuration
 llm:
-  model: "llama3.2:3b-instruct-q4_K_M"
+  model: "llama3.2:1b-instruct-q4_K_M"
   ollama_host: "http://localhost:11434"
   temperature: 0.8
-  max_context_length: 2048
+  max_context_length: 4096
   system_prompt: |
     You are Pi Bot, a friendly AI desk companion running on a Raspberry Pi.
 
