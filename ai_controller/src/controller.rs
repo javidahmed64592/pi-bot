@@ -678,7 +678,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_controller_initialization() {
-        // This test requires a valid config file and Ollama running
+        // This test requires a valid config file and llamafile running
         // Skip in CI environments
         if std::env::var("CI").is_ok() {
             return;
@@ -687,10 +687,10 @@ mod tests {
         let config = load_config("../config/config.yaml").unwrap();
         let state = ControllerState::new(config).await;
 
-        // If Ollama is not running, this will fail gracefully
+        // If llamafile is not running, this will fail gracefully
         if state.is_err() {
             eprintln!(
-                "Controller initialization test skipped (Ollama not running): {}",
+                "Controller initialization test skipped (llamafile not running): {}",
                 state.err().unwrap()
             );
             return;

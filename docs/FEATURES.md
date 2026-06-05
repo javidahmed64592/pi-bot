@@ -516,7 +516,7 @@ Bot: "Setting up ambient lighting. I'll stay quiet unless you need me."
 - Wake phrase detection (Vosk keyword spotting)
 - Speech-to-text (Vosk recognition)
 - Text-to-speech (Piper)
-- LLM conversation (Ollama with Qwen2.5 7B)
+- LLM conversation (Llamafile with Qwen2.5 3B)
 - RGB LED control with state-based patterns
 - PIR motion detection for presence
 - Basic persistent memory (conversation history)

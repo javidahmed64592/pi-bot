@@ -11,7 +11,7 @@ bot_core = { path = "../bot_core" }
 # Async runtime
 tokio = { workspace = true }
 
-# HTTP client for Ollama API
+# HTTP client for LLM API (OpenAI-compatible)
 reqwest = { workspace = true }
 
 # JSON for LLM requests/responses and memory storage

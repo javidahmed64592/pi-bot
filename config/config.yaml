@@ -68,8 +68,10 @@ audio:
 
 # LLM Configuration
 llm:
-  model: "qwen2.5:3b"
-  ollama_host: "http://localhost:11434"
+  model: "llama3.2-3b-instruct"
+  api_host: "http://localhost:8080"
+  llamafile_path: "models/llamafile/llamafile"
+  model_path: "models/llamafile/llama3.2-3b-instruct-q4_k_m.gguf"
   temperature: 0.8
   max_context_length: 4096
   system_prompt: |
@@ -129,41 +131,41 @@ behavior:
 #   - rainbow: Cycle through rainbow (ambient mode)
 #
 # Color examples:
-#   Red:    [255, 0, 0]    Yellow: [255, 255, 0]   White:  [255, 255, 255]
-#   Green:  [0, 255, 0]    Cyan:   [0, 255, 255]   Off:    [0, 0, 0]
-#   Blue:   [0, 0, 255]    Purple: [128, 0, 128]   Orange: [255, 165, 0]
+#   Red:    [255, 0, 64]   Yellow: [255, 243, 0]   White:  [255, 255, 255]
+#   Green:  [0, 255, 65]   Cyan:   [0, 255, 255]   Off:    [0, 0, 0]
+#   Blue:   [0, 191, 255]  Purple: [191, 0, 255]   Orange: [255, 154, 0]
 #
 rgb_led:
   # Top-level conversation states
   ready:
     pattern: "breathing"
-    color: [0, 255, 0]  # Green
+    color: [0, 255, 65]     # Green
 
   observing:
     pattern: "breathing"
-    color: [0, 0, 255]  # Blue
+    color: [0, 191, 255]    # Blue
 
   silent:
     pattern: "breathing"
-    color: [255, 0, 0]  # Red
+    color: [255, 0, 64]     # Red
 
   # Active conversation sub-states
   active:
     listening:
       pattern: "breathing"
-      color: [255, 165, 0]  # Orange/brown
+      color: [255, 154, 0]  # Orange
 
     thinking:
       pattern: "pulse"
-      color: [0, 0, 255]  # Blue
+      color: [0, 191, 255]  # Blue
 
     speaking:
       pattern: "solid"
-      color: [0, 255, 0]  # Green
+      color: [0, 255, 65]   # Green
 
     learning:
       pattern: "pulse"
-      color: [128, 0, 128]  # Purple
+      color: [191, 0, 255]  # Purple
 
 # Status LED Patterns (single-color LEDs, pattern only)
 status_leds:

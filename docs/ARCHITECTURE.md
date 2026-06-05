@@ -140,7 +140,7 @@ pi-bot/
 │   └── src/
 │       ├── lib.rs
 │       ├── controller.rs         # Main event handler
-│       ├── llm_service.rs        # Ollama integration
+│       ├── llm_service.rs        # Llamafile integration (OpenAI API)
 │       ├── memory_service.rs     # Persistent memory
 │       ├── state_machine.rs      # Bot behavioral modes
 │       └── personality.rs        # Personality traits & response style
@@ -482,13 +482,14 @@ async fn handle_event(
 **LLM Service** (`llm_service.rs`):
 ```rust
 pub struct LlmService {
-    client: OllamaClient,
+    client: reqwest::Client,
+    api_host: String,
     model: String,
 }
 
 impl LlmService {
     pub async fn new(config: LlmConfig) -> Self {
-        // Initialize Ollama client
+        // Initialize HTTP client for OpenAI-compatible API
     }
 
     pub async fn generate_response(
@@ -498,7 +499,7 @@ impl LlmService {
         state: &BotState,
     ) -> String {
         // Build prompt with context + memories + system state
-        // Call Ollama API
+        // Call llamafile API (OpenAI-compatible)
         // Return response
     }
 }
@@ -927,7 +928,7 @@ async fn health_monitor_task(
 - `tokio-process` - Piper TTS subprocess
 
 **AI**:
-- `reqwest` - Ollama API client
+- `reqwest` - LLM API client (OpenAI-compatible)
 - `serde_json` - JSON memory storage
 
 ### Python Packages

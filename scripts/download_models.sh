@@ -36,6 +36,7 @@ fi
 # Create models directory structure
 mkdir -p "$VOSK_DIR_BASE"
 mkdir -p "$PIPER_DIR_BASE"
+mkdir -p "$MODELS_DIR/llamafile"
 
 echo "Reading configuration from: config/config.yaml"
 echo "Models will be downloaded to: $MODELS_DIR"
@@ -159,14 +160,96 @@ else
 fi
 
 echo ""
+
+# ========================================
+# Llamafile LLM
+# ========================================
+echo "3. Downloading Llamafile and Model from config"
+echo ""
+
+LLAMAFILE_DIR="$MODELS_DIR/llamafile"
+
+# Extract llamafile path and model path from config
+LLAMAFILE_PATH=$(grep -E '^[[:space:]]*llamafile_path:' "$CONFIG_FILE" | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
+MODEL_PATH=$(grep -E '^[[:space:]]*model_path:' "$CONFIG_FILE" | grep 'llamafile' | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
+
+if [ -z "$LLAMAFILE_PATH" ] || [ -z "$MODEL_PATH" ]; then
+    echo "   ⚠ Could not find llamafile paths in config.yaml"
+    echo "   Skipping llamafile download. You can download manually."
+    echo ""
+else
+    echo "   Llamafile: $LLAMAFILE_PATH"
+    echo "   Model: $MODEL_PATH"
+    echo ""
+
+    LLAMAFILE_FULL_PATH="$PROJECT_ROOT/$LLAMAFILE_PATH"
+    MODEL_FULL_PATH="$PROJECT_ROOT/$MODEL_PATH"
+    MODEL_FILENAME=$(basename "$MODEL_PATH")
+
+    # Download llamafile executable
+    if [ -f "$LLAMAFILE_FULL_PATH" ]; then
+        echo "   ✓ Llamafile executable already exists"
+    else
+        echo "   Downloading llamafile executable for ARM64..."
+
+        # Detect architecture
+        ARCH=$(uname -m)
+        if [[ "$ARCH" == "aarch64" ]] || [[ "$ARCH" == "arm64" ]]; then
+            LLAMAFILE_URL="https://github.com/Mozilla-Ocho/llamafile/releases/download/0.8.13/llamafile-0.8.13"
+        else
+            echo "   ⚠ Warning: Not running on ARM64 ($ARCH). Downloading generic version."
+            LLAMAFILE_URL="https://github.com/Mozilla-Ocho/llamafile/releases/download/0.8.13/llamafile-0.8.13"
+        fi
+
+        wget -O "$LLAMAFILE_FULL_PATH" "$LLAMAFILE_URL" || {
+            echo "   ✗ Failed to download llamafile"
+            echo "   You can download manually from: https://github.com/Mozilla-Ocho/llamafile/releases"
+            exit 1
+        }
+
+        chmod +x "$LLAMAFILE_FULL_PATH"
+        echo "   ✓ Llamafile executable installed"
+    fi
+
+    # Download GGUF model
+    if [ -f "$MODEL_FULL_PATH" ]; then
+        echo "   ✓ Model file already exists"
+    else
+        echo "   Downloading GGUF model (Qwen2.5 3B Q4_K_M)..."
+        echo "   This is ~2GB and may take several minutes..."
+        echo ""
+
+        # Qwen2.5 3B Instruct Q4_K_M from HuggingFace
+        MODEL_URL="https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf"
+
+        wget --progress=bar:force -O "$MODEL_FULL_PATH" "$MODEL_URL" || {
+            echo "   ✗ Failed to download model"
+            echo "   You can download manually from: https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF"
+            exit 1
+        }
+
+        echo "   ✓ Model file installed successfully"
+    fi
+
+    echo ""
+    echo "   To start llamafile server:"
+    echo "   $LLAMAFILE_FULL_PATH --server --port 8080 -m $MODEL_FULL_PATH"
+    echo ""
+fi
+
+echo ""
 echo "================================================"
 echo "✓ All models downloaded successfully!"
 echo "================================================"
 echo ""
 echo "Model locations:"
-echo "  Vosk:  $VOSK_DIR"
-echo "  Piper: $PIPER_DIR_BASE/"
+echo "  Vosk:      $VOSK_DIR"
+echo "  Piper:     $PIPER_DIR_BASE/"
+echo "  Llamafile: $MODELS_DIR/llamafile/"
 echo ""
-echo "You can now run the system with:"
-echo "  cargo run --bin runner"
+echo "To start llamafile server:"
+echo "  ./models/llamafile/llamafile --server --port 8080 -m ./models/llamafile/qwen2.5-3b-instruct-q4_k_m.gguf"
+echo ""
+echo "Then run the Pi Bot:"
+echo "  cargo run --release --bin runner"
 echo ""

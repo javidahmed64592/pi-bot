@@ -61,7 +61,7 @@ The Pi Bot project aims to create an intelligent, interactive AI companion using
 
 | Component | Purpose | Model/Config |
 |-----------|---------|--------------|
-| **Ollama** | Local LLM inference | Qwen2.5 7B (fits comfortably in 16GB RAM) |
+| **Llamafile** | Local LLM inference (OpenAI-compatible API) | Qwen2.5 3B Q4_K_M (~2GB) |
 | **Piper** | Text-to-speech synthesis | `en_GB-alba-medium` voice |
 | **Vosk** | Wake word detection + STT | See model comparison below |
 
@@ -137,6 +137,20 @@ wget https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_GB/alba/me
 
 Browse available voices: https://huggingface.co/rhasspy/piper-voices
 
+**Llamafile Model:**
+```bash
+cd models/llamafile
+# Download llamafile executable
+wget https://github.com/Mozilla-Ocho/llamafile/releases/download/0.8.13/llamafile-0.8.13
+chmod +x llamafile-0.8.13
+mv llamafile-0.8.13 llamafile
+
+# Download Qwen2.5 3B model (Q4_K_M quantization, ~2GB)
+wget https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf
+```
+
+Browse available models: https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF
+
 **Expected Directory Structure:**
 ```
 models/
@@ -146,9 +160,101 @@ models/
 │       ├── conf/
 │       ├── graph/
 │       └── ...
-└── piper/
-    ├── en_GB-alba-medium.onnx
-    └── en_GB-alba-medium.onnx.json
+├── piper/
+│   ├── en_GB-alba-medium.onnx
+│   └── en_GB-alba-medium.onnx.json
+└── llamafile/
+    ├── llamafile                          # Executable
+    └── qwen2.5-3b-instruct-q4_k_m.gguf   # Model weights
+```
+
+**Troubleshooting:**
+- **Different language/accent needed**: Edit `scripts/download_models.sh` or update `config/config.yaml` to match your preferred model
+
+#### Llamafile Setup
+
+**Why Llamafile?**
+
+Llamafile offers significant advantages for single-board computers like Raspberry Pi:
+- **Single executable**: No separate model management tools required
+- **Better performance**: ~20-30% faster inference on ARM architectures
+- **Lower memory footprint**: More efficient resource usage (~500MB less than Ollama)
+- **OpenAI-compatible API**: Standard interface for easy integration
+- **Simple deployment**: Download and run—no installation required
+
+**Running Llamafile:**
+
+After downloading models with `./scripts/download_models.sh`, start the llamafile server:
+
+```bash
+# Start llamafile server (from project root)
+./models/llamafile/llamafile --server --port 8080 \
+  -m ./models/llamafile/qwen2.5-3b-instruct-q4_k_m.gguf \
+  --host 0.0.0.0
+
+# Or run in background
+nohup ./models/llamafile/llamafile --server --port 8080 \
+  -m ./models/llamafile/qwen2.5-3b-instruct-q4_k_m.gguf \
+  --host 0.0.0.0 > llamafile.log 2>&1 &
+```
+
+**Systemd Service (Auto-start on Boot):**
+
+Create `/etc/systemd/system/llamafile.service`:
+
+```ini
+[Unit]
+Description=Llamafile LLM Server for Pi Bot
+After=network.target
+
+[Service]
+Type=simple
+User=javid
+WorkingDirectory=/home/javid/Code/pi-bot
+ExecStart=/home/javid/Code/pi-bot/models/llamafile/llamafile --server --port 8080 -m /home/javid/Code/pi-bot/models/llamafile/qwen2.5-3b-instruct-q4_k_m.gguf --host 0.0.0.0
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable llamafile
+sudo systemctl start llamafile
+sudo systemctl status llamafile
+```
+
+**Performance Tuning:**
+
+- **Model quantization options**:
+  - Q4_K_M (recommended): ~2GB RAM, good balance
+  - Q5_K_M: ~3GB RAM, better quality
+  - Q3_K_M: ~1.5GB RAM, lower quality but faster
+
+- **Thread configuration**:
+  ```bash
+  ./llamafile --server --port 8080 -m model.gguf --threads 4
+  ```
+
+- **Expected performance on Pi 5**: 5-15 tokens/second with Q4_K_M
+
+**Verification:**
+
+Test the API is working:
+```bash
+# Check models endpoint
+curl http://localhost:8080/v1/models
+
+# Test completion
+curl http://localhost:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen2.5-3b-instruct",
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'
 ```
 
 **Troubleshooting:**
@@ -161,7 +267,7 @@ models/
 - `rppal` - Raspberry Pi GPIO/PWM/I2C
 - `serde` / `serde_yaml` - Configuration management
 - `vosk` - Wake word detection + STT (offline, open source)
-- `reqwest` - HTTP client for Ollama API
+- `reqwest` - HTTP client for LLM API (OpenAI-compatible)
 - `rodio` / `cpal` - Audio playback
 
 **Python Packages (via uv):**
@@ -179,7 +285,7 @@ models/
 
 **Storage Requirements:**
 - System files: ~20GB
-- Ollama models: ~5GB (Qwen2.5 7B)
+- Llamafile models: ~2-3GB (Qwen2.5 3B Q4_K_M + executable)
 - Vosk model: 40MB-2.3GB (depending on model choice)
 - Piper TTS model: ~60MB
 - Memory database: <100MB
@@ -195,7 +301,7 @@ models/
 **Components**:
 - ✅ Wake word detection
 - ✅ Speech-to-text
-- ✅ LLM conversation (Ollama)
+- ✅ LLM conversation (Llamafile)
 - ✅ Text-to-speech
 - ✅ RGB LED state indication
 - ✅ Green status LEDs (active states)
@@ -241,13 +347,13 @@ models/
 ### Performance Targets
 - **Wake word latency**: <200ms
 - **STT processing**: <2s (for 5-second speech clip)
-- **LLM response**: <3s (Qwen2.5 7B with 16GB RAM)
+- **LLM response**: <2s (Qwen2.5 3B with llamafile)
 - **TTS synthesis**: <1s
-- **End-to-end interaction**: <6s (wake word → spoken response)
+- **End-to-end interaction**: <5s (wake word → spoken response)
 
 ### Resource Usage
-- **Idle RAM**: ~8GB (Ollama model loaded)
-- **Active RAM**: ~10GB (during inference)
+- **Idle RAM**: ~3GB (llamafile model loaded)
+- **Active RAM**: ~4GB (during inference)
 - **CPU usage**: ~40-60% during conversation
 - **Storage growth**: ~50MB/day (conversation logs)
 
@@ -264,7 +370,7 @@ models/
 
 - **Local processing**: All AI inference runs on-device (no cloud)
 - **Data ownership**: All conversation logs stored locally
-- **Network isolation**: Can operate without internet (except Ollama model download)
+- **Network isolation**: Can operate without internet (except model download)
 - **Memory review**: User can inspect/delete memory files
 - **Wake word privacy**: Always-on listening only for wake phrase (Vosk keyword spotting)
 
@@ -273,9 +379,10 @@ models/
 ## Getting Started
 
 1. **Hardware Setup**: Wire components according to GPIO pin configuration
-2. **Software Installation**: Install Rust, Python, Ollama, Piper
-3. **Component Testing**: Run individual test binaries to verify hardware
-4. **System Integration**: Build and run full Pi Bot system
-5. **Personality Training**: Interact and let the bot learn about you
+2. **Software Installation**: Install Rust, Python, download models with `./scripts/download_models.sh`
+3. **Start Llamafile**: Run the LLM server (see Llamafile Setup section above)
+4. **Component Testing**: Run individual test binaries to verify hardware
+5. **System Integration**: Build and run full Pi Bot system
+6. **Personality Training**: Interact and let the bot learn about you
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed build and deployment instructions.

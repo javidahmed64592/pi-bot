@@ -22,7 +22,7 @@ pub struct SystemConfig {
     /// Audio configuration (Vosk, Piper, microphone settings)
     pub audio: AudioConfig,
 
-    /// LLM configuration (Ollama, model, prompts)
+    /// LLM configuration (API host, model, prompts)
     pub llm: LlmConfig,
 
     /// Memory system configuration
@@ -160,14 +160,14 @@ pub struct PiperConfig {
 // LLM Configuration
 // ============================================================================
 
-/// Ollama LLM configuration
+/// LLM configuration for llamafile (OpenAI-compatible API)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LlmConfig {
-    /// Model name (e.g., "qwen2.5:7b-instruct")
+    /// Model name (e.g., "qwen2.5-3b-instruct")
     pub model: String,
 
-    /// Ollama API host URL
-    pub ollama_host: String,
+    /// API host URL (e.g., "http://localhost:8080")
+    pub api_host: String,
 
     /// Temperature for generation (0.0-2.0)
     pub temperature: f32,

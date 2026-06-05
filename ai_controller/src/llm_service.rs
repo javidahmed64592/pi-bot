@@ -1,12 +1,12 @@
 //! # LLM Service
 //!
-//! Ollama API client for conversational AI using Qwen2.5 7B.
+//! OpenAI-compatible API client for conversational AI using llamafile.
 //!
 //! ## Architecture
 //!
 //! LlmService handles:
 //! - Building conversation context from system prompt and message history
-//! - Making API calls to local Ollama server
+//! - Making API calls to local llamafile server (OpenAI-compatible)
 //! - Streaming responses for real-time feedback
 //! - Error handling and retry logic
 //!
@@ -18,8 +18,8 @@
 //!
 //! # async fn example() {
 //! let config = LlmConfig {
-//!     model: "qwen2.5:7b-instruct".to_string(),
-//!     ollama_host: "http://localhost:11434".to_string(),
+//!     model: "qwen2.5-3b-instruct".to_string(),
+//!     api_host: "http://localhost:8080".to_string(),
 //!     temperature: 0.8,
 //!     max_context_length: 4096,
 //!     system_prompt: "You are a helpful assistant.".to_string(),
@@ -45,13 +45,13 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum LlmError {
-    #[error("Ollama API request failed: {0}")]
+    #[error("LLM API request failed: {0}")]
     ApiRequestError(String),
 
-    #[error("Failed to parse Ollama response: {0}")]
+    #[error("Failed to parse LLM response: {0}")]
     ResponseParseError(String),
 
-    #[error("Ollama returned empty response")]
+    #[error("LLM returned empty response")]
     EmptyResponse,
 
     #[error("Model not found: {0}")]
@@ -65,7 +65,7 @@ pub enum LlmError {
 }
 
 // ============================================================================
-// API Types (Ollama JSON Schema)
+// API Types (OpenAI-compatible JSON Schema)
 // ============================================================================
 
 /// Message in conversation history
@@ -101,38 +101,55 @@ impl Message {
     }
 }
 
-/// Request to Ollama /api/chat endpoint
+/// Request to OpenAI-compatible /v1/chat/completions endpoint
 #[derive(Debug, Serialize)]
 struct ChatRequest {
     model: String,
     messages: Vec<Message>,
-    stream: bool,
-    options: ChatOptions,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stream: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<u32>,
 }
 
-/// Generation options for Ollama
-#[derive(Debug, Serialize)]
-struct ChatOptions {
-    temperature: f32,
-    num_ctx: u32, // context window size
-}
-
-/// Response from Ollama /api/chat endpoint (non-streaming)
+/// Response from OpenAI-compatible /v1/chat/completions endpoint (non-streaming)
 #[derive(Debug, Deserialize)]
 struct ChatResponse {
+    #[allow(dead_code)]
+    id: String,
+
+    #[allow(dead_code)]
+    object: String,
+
+    #[allow(dead_code)]
+    created: u64,
+
+    #[allow(dead_code)]
+    model: String,
+
+    choices: Vec<ChatChoice>,
+
+    #[serde(default)]
+    usage: Option<Usage>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChatChoice {
+    #[allow(dead_code)]
+    index: u32,
     message: Message,
 
     #[allow(dead_code)]
-    done: bool,
+    finish_reason: Option<String>,
+}
 
-    #[serde(default)]
-    total_duration: Option<u64>,
-
-    #[serde(default)]
-    prompt_eval_count: Option<u32>,
-
-    #[serde(default)]
-    eval_count: Option<u32>,
+#[derive(Debug, Deserialize)]
+struct Usage {
+    prompt_tokens: u32,
+    completion_tokens: u32,
+    total_tokens: u32,
 }
 
 // ============================================================================
@@ -141,7 +158,7 @@ struct ChatResponse {
 
 /// LLM service for generating conversational responses
 ///
-/// Uses Ollama API to communicate with locally-running LLM (Qwen2.5 7B).
+/// Uses OpenAI-compatible API to communicate with locally-running LLM (llamafile).
 /// Manages conversation context and generates contextually appropriate responses.
 pub struct LlmService {
     config: LlmConfig,
@@ -157,21 +174,21 @@ impl LlmService {
     ///
     /// # Returns
     ///
-    /// Result containing LlmService or error if Ollama is not available
+    /// Result containing LlmService or error if API server is not available
     pub async fn new(config: LlmConfig) -> Result<Self, LlmError> {
         // Validate config
         if config.model.is_empty() {
             return Err(LlmError::InvalidConfig("model cannot be empty".to_string()));
         }
 
-        if config.ollama_host.is_empty() {
+        if config.api_host.is_empty() {
             return Err(LlmError::InvalidConfig(
-                "ollama_host cannot be empty".to_string(),
+                "api_host cannot be empty".to_string(),
             ));
         }
 
         // Create HTTP client with longer timeout for Pi 5 generation
-        // Qwen 2.5 7B can take 30-90 seconds for first response on Pi
+        // Smaller models (3B) typically respond in 5-30 seconds on Pi
         let client = Client::builder()
             .timeout(std::time::Duration::from_secs(180)) // 3 minutes
             .connect_timeout(std::time::Duration::from_secs(10))
@@ -182,7 +199,7 @@ impl LlmService {
 
         info!(
             "Initialized LLM service with model: {} (host: {})",
-            config.model, config.ollama_host
+            config.model, config.api_host
         );
 
         Ok(Self { config, client })
@@ -202,7 +219,7 @@ impl LlmService {
     /// # Behavior
     ///
     /// - Builds conversation context: [system prompt, history..., user input]
-    /// - Sends request to Ollama API
+    /// - Sends request to OpenAI-compatible API
     /// - Returns complete response text
     /// - Logs generation metrics (tokens, duration)
     pub async fn generate(
@@ -240,21 +257,21 @@ impl LlmService {
             });
         }
 
-        // Build request
+        // Build request (OpenAI format)
         let request = ChatRequest {
             model: self.config.model.clone(),
             messages,
-            stream: false, // Non-streaming for simplicity in Phase 1
-            options: ChatOptions {
-                temperature: self.config.temperature,
-                num_ctx: self.config.max_context_length,
-            },
+            stream: Some(false), // Non-streaming for simplicity in Phase 1
+            temperature: Some(self.config.temperature),
+            max_tokens: Some(self.config.max_context_length),
         };
 
-        // Send request to Ollama
-        let url = format!("{}/api/chat", self.config.ollama_host);
+        // Send request to OpenAI-compatible endpoint
+        let url = format!("{}/v1/chat/completions", self.config.api_host);
         debug!("Sending request to: {}", url);
         debug!("Request: {:?}", request);
+
+        let start_time = std::time::Instant::now();
 
         let response = self
             .client
@@ -267,7 +284,8 @@ impl LlmService {
                 let error_msg = e.to_string();
                 if error_msg.contains("timeout") {
                     LlmError::ApiRequestError(
-                        "Request timed out after 180s. Model may be too slow on this hardware. Consider using a smaller model like qwen2.5:3b".to_string()
+                        "Request timed out after 180s. Model may be too slow on this hardware."
+                            .to_string(),
                     )
                 } else {
                     LlmError::ApiRequestError(format!("HTTP request failed: {}", error_msg))
@@ -290,25 +308,30 @@ impl LlmService {
             .await
             .map_err(|e| LlmError::ResponseParseError(format!("JSON parse failed: {}", e)))?;
 
+        let duration = start_time.elapsed();
+
         // Log metrics
-        if let (Some(duration), Some(prompt_tokens), Some(completion_tokens)) = (
-            chat_response.total_duration,
-            chat_response.prompt_eval_count,
-            chat_response.eval_count,
-        ) {
-            let duration_secs = duration as f64 / 1_000_000_000.0;
-            let tokens_per_sec = completion_tokens as f64 / duration_secs;
+        if let Some(usage) = chat_response.usage {
+            let duration_secs = duration.as_secs_f64();
+            let tokens_per_sec = usage.completion_tokens as f64 / duration_secs;
             info!(
                 "Generated response: {} tokens in {:.1}s ({:.1} tokens/s)",
-                completion_tokens, duration_secs, tokens_per_sec
+                usage.completion_tokens, duration_secs, tokens_per_sec
             );
             debug!(
-                "Prompt tokens: {}, Completion tokens: {}",
-                prompt_tokens, completion_tokens
+                "Prompt tokens: {}, Completion tokens: {}, Total: {}",
+                usage.prompt_tokens, usage.completion_tokens, usage.total_tokens
             );
+        } else {
+            info!("Generated response in {:.1}s", duration.as_secs_f64());
         }
 
-        let response_text = chat_response.message.content.trim().to_string();
+        // Extract response from first choice
+        let response_text = chat_response
+            .choices
+            .first()
+            .map(|choice| choice.message.content.trim().to_string())
+            .ok_or(LlmError::EmptyResponse)?;
 
         if response_text.is_empty() {
             return Err(LlmError::EmptyResponse);
@@ -319,13 +342,13 @@ impl LlmService {
         Ok(response_text)
     }
 
-    /// Check if Ollama server is available
+    /// Check if API server is available
     ///
     /// # Returns
     ///
     /// Result indicating if server is reachable
     pub async fn check_health(&self) -> Result<bool, LlmError> {
-        let url = format!("{}/api/tags", self.config.ollama_host);
+        let url = format!("{}/v1/models", self.config.api_host);
         let response = self
             .client
             .get(&url)
@@ -371,11 +394,11 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore] // Requires Ollama to be running
+    #[ignore] // Requires llamafile to be running
     async fn test_llm_service_init() {
         let config = LlmConfig {
-            model: "qwen2.5:7b-instruct".to_string(),
-            ollama_host: "http://localhost:11434".to_string(),
+            model: "qwen2.5-3b-instruct".to_string(),
+            api_host: "http://localhost:8080".to_string(),
             temperature: 0.8,
             max_context_length: 4096,
             system_prompt: "You are a test assistant.".to_string(),
@@ -386,11 +409,11 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore] // Requires Ollama to be running with model loaded
+    #[ignore] // Requires llamafile to be running with model loaded
     async fn test_generate() {
         let config = LlmConfig {
-            model: "qwen2.5:7b-instruct".to_string(),
-            ollama_host: "http://localhost:11434".to_string(),
+            model: "qwen2.5-3b-instruct".to_string(),
+            api_host: "http://localhost:8080".to_string(),
             temperature: 0.8,
             max_context_length: 4096,
             system_prompt: "You are a helpful assistant. Keep responses brief.".to_string(),

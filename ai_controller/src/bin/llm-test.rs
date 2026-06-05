@@ -1,6 +1,6 @@
 //! # LLM Test Binary
 //!
-//! Interactive CLI for testing the LLM service with Ollama.
+//! Interactive CLI for testing the LLM service with llamafile.
 //!
 //! ## Usage
 //!
@@ -15,7 +15,7 @@
 //!
 //! ## What it tests
 //!
-//! 1. Ollama API connectivity
+//! 1. LLM API connectivity
 //! 2. LLM initialization with configuration
 //! 3. Single-turn and multi-turn conversations
 //! 4. Response quality and latency
@@ -23,8 +23,8 @@
 //!
 //! ## Requirements
 //!
-//! - Ollama running locally (http://localhost:11434)
-//! - Qwen2.5 7B model downloaded: `ollama pull qwen2.5:7b-instruct`
+//! - llamafile running locally (http://localhost:8080)
+//! - Model embedded in llamafile or loaded via --model flag
 
 use ai_controller::{LlmService, MemoryService};
 use anyhow::{Context, Result};
@@ -53,8 +53,8 @@ async fn main() -> Result<()> {
     println!("  Temperature: {}", service.temperature());
     println!();
 
-    // Check Ollama health
-    print!("Checking Ollama server...");
+    // Check API server health
+    print!("Checking API server...");
     io::stdout().flush()?;
     match service.check_health().await {
         Ok(true) => println!(" ✓ Connected"),
@@ -65,10 +65,12 @@ async fn main() -> Result<()> {
         Err(e) => {
             println!(" ✗ Failed: {}", e);
             println!();
-            println!("Make sure Ollama is running:");
-            println!("  1. Install: https://ollama.com");
-            println!("  2. Pull model: ollama pull qwen2.5:7b-instruct");
-            println!("  3. Verify: ollama list");
+            println!("Make sure llamafile is running:");
+            println!("  1. Download llamafile for your model");
+            println!("  2. Run: ./llamafile --server --port 8080");
+            println!(
+                "  3. Or run with specific model: ./llamafile --server --port 8080 -m model.gguf"
+            );
             return Ok(());
         }
     }

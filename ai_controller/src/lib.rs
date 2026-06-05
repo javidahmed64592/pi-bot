@@ -3,7 +3,7 @@
 //! The brain of the Pi Bot companion system.
 //!
 //! Components:
-//! - llm_service.rs: Ollama API client for conversation (Phase 1.9) ✓
+//! - llm_service.rs: OpenAI-compatible API client for conversation (Phase 1.9) ✓
 //! - memory_service.rs: JSON-based persistent memory system (Phase 1.10) ✓
 //! - controller.rs: Main event loop, state machine, decision making (Phase 1.12) ✓
 
