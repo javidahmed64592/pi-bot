@@ -1,172 +1,192 @@
 #!/bin/bash
-# Download ML models for Pi-Bot
+# Download ML models for Pi-Bot (Vosk for speech recognition, Piper for TTS, Ollama for LLM)
 # Reads config.yaml and downloads the specified models automatically
 # Models are too large to commit to Git, so they must be downloaded separately
 #
 # Usage:
-#   1. Edit config/config.yaml and uncomment your desired Vosk model
+#   1. Edit config/config.yaml and set your desired models
 #   2. Run: ./scripts/download_models.sh
-#   3. The script will download only the model specified in config
 #
-# To switch models:
-#   - Comment out old model, uncomment new model in config.yaml
-#   - Run this script again to download the new model
-#   - Old models remain on disk (delete manually to save space)
+# Note: Ollama must be installed and running locally to download LLM models.
 
-set -e
+set -eu
+
+TERMINAL_WIDTH=$(tput cols 2>/dev/null || echo 80)
+SEPARATOR=$(printf '=%.0s' $(seq 1 $TERMINAL_WIDTH))
+
+NC='\033[0m'
+RED='\033[1;31m'
+GREEN='\033[1;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[1;34m'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-MODELS_DIR="$PROJECT_ROOT/models"
-VOSK_DIR_BASE="$MODELS_DIR/vosk"
-PIPER_DIR_BASE="$MODELS_DIR/piper"
-CONFIG_FILE="$PROJECT_ROOT/config/config.yaml"
+PROJECT_ROOT="$(dirname "${SCRIPT_DIR}")"
+MODELS_DIR="${PROJECT_ROOT}/models"
+VOSK_DIR_BASE="${MODELS_DIR}/vosk"
+PIPER_DIR_BASE="${MODELS_DIR}/piper"
+CONFIG_FILE="${PROJECT_ROOT}/config/config.yaml"
 
-echo "================================================"
+echo "${SEPARATOR}"
 echo "Pi-Bot Model Downloader"
-echo "================================================"
-echo ""
+echo "${SEPARATOR}"
 
 # Check if config exists
-if [ ! -f "$CONFIG_FILE" ]; then
-    echo "✗ Config file not found: $CONFIG_FILE"
+if [ ! -f "${CONFIG_FILE}" ]; then
+    echo -e "${RED}✗${NC} Config file not found: ${BLUE}${CONFIG_FILE}${NC}"
     exit 1
 fi
 
 # Create models directory structure
-mkdir -p "$VOSK_DIR_BASE"
-mkdir -p "$PIPER_DIR_BASE"
+mkdir -p "${VOSK_DIR_BASE}"
+mkdir -p "${PIPER_DIR_BASE}"
 
-echo "Reading configuration from: config/config.yaml"
-echo "Models will be downloaded to: $MODELS_DIR"
-echo ""
+echo -e "Reading configuration from: ${BLUE}${CONFIG_FILE}${NC}"
+echo -e "Vosk and Piper models will be downloaded to: ${BLUE}${MODELS_DIR}${NC}"
+echo
 
 # ========================================
 # Vosk Speech Recognition Model
 # ========================================
 echo "1. Downloading Vosk Model from config"
-echo ""
+echo
 
 # Extract model path from config (get the active uncommented line)
-VOSK_MODEL_PATH=$(grep -E '^[[:space:]]*model_path:' "$CONFIG_FILE" | grep 'vosk' | head -1 | sed 's/.*"\([^"]*\)".*/\1/' | sed 's|models/vosk/||')
+VOSK_MODEL_PATH=$(grep -E '^[[:space:]]*model_path:' "${CONFIG_FILE}" | grep 'vosk' | head -1 | sed 's/.*"\([^"]*\)".*/\1/' | sed 's|models/vosk/||')
 
-if [ -z "$VOSK_MODEL_PATH" ]; then
-    echo "   ✗ Could not find Vosk model_path in config.yaml"
+if [ -z "${VOSK_MODEL_PATH}" ]; then
+    echo -e "   ${RED}✗${NC} Could not find Vosk ${GREEN}model_path${NC} in ${BLUE}config.yaml${NC}"
     exit 1
 fi
 
-VOSK_MODEL="$VOSK_MODEL_PATH"
-echo "   Model from config: $VOSK_MODEL"
-
-# Determine size for display
-case "$VOSK_MODEL" in
-    *"small"*)
-        SIZE_INFO="~40MB, fast, less accurate"
-        ;;
-    *"lgraph"*)
-        SIZE_INFO="~128MB, good balance"
-        ;;
-    *"0.22")
-        SIZE_INFO="~1.8GB, very accurate, high RAM"
-        ;;
-    *"gigaspeech"*)
-        SIZE_INFO="~2.3GB, best accuracy"
-        ;;
-    *"daanzu"*)
-        SIZE_INFO="~1GB, good for commands"
-        ;;
-    *)
-        SIZE_INFO="size varies"
-        ;;
-esac
-
-echo "   Model specs: $SIZE_INFO"
-echo ""
+VOSK_MODEL="${VOSK_MODEL_PATH}"
+echo -e "   Model from config: ${GREEN}${VOSK_MODEL}${NC}"
 
 VOSK_URL="https://alphacephei.com/vosk/models/${VOSK_MODEL}.zip"
-VOSK_ZIP="$VOSK_DIR_BASE/${VOSK_MODEL}.zip"
-VOSK_DIR="$VOSK_DIR_BASE/${VOSK_MODEL}"
+VOSK_ZIP="${VOSK_DIR_BASE}/${VOSK_MODEL}.zip"
+VOSK_DIR="${VOSK_DIR_BASE}/${VOSK_MODEL}"
 
-if [ -d "$VOSK_DIR" ]; then
-    echo "   ✓ Vosk model already exists at: $VOSK_DIR"
+if [ -d "${VOSK_DIR}" ]; then
+    echo -e "   ${GREEN}✓${NC} Vosk model already exists at: ${BLUE}${VOSK_DIR}${NC}"
     echo "   To re-download, delete the directory first"
 else
-    echo "   Downloading from: $VOSK_URL"
+    echo -e "   Downloading from: ${BLUE}${VOSK_URL}${NC}"
     echo "   This may take several minutes depending on model size..."
-    echo ""
+    echo
 
-    wget -O "$VOSK_ZIP" "$VOSK_URL" || {
-        echo "   ✗ Failed to download Vosk model"
+    wget -O "${VOSK_ZIP}" "${VOSK_URL}" || {
+        echo -e "   ${RED}✗${NC} Failed to download Vosk model"
         echo "   "
-        echo "   Available models: https://alphacephei.com/vosk/models"
-        echo "   Make sure the model name in config.yaml is correct"
+        echo -e "   Available models: ${BLUE}https://alphacephei.com/vosk/models${NC}"
+        echo -e "   Make sure the model name in ${BLUE}config.yaml${NC} is correct"
         exit 1
     }
 
     echo "   Extracting model..."
-    cd "$VOSK_DIR_BASE"
-    unzip -q "$VOSK_ZIP"
-    rm "$VOSK_ZIP"
+    cd "${VOSK_DIR_BASE}"
+    unzip -q "${VOSK_ZIP}"
+    rm "${VOSK_ZIP}"
 
-    echo "   ✓ Vosk model installed successfully"
+    echo -e "   ${GREEN}✓${NC} Vosk model installed successfully"
 fi
 
-echo ""
+echo
 
 # ========================================
 # Piper TTS Model
 # ========================================
 echo "2. Downloading Piper TTS Model from config"
-echo ""
+echo
 
 # Extract voice from config (find voice: line in piper section, extract quoted value)
-PIPER_VOICE=$(grep -E '^[[:space:]]*voice:' "$CONFIG_FILE" | grep -v '^#' | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
+PIPER_VOICE=$(grep -E '^[[:space:]]*voice:' "${CONFIG_FILE}" | grep -v '^#' | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
 
-if [ -z "$PIPER_VOICE" ]; then
-    echo "   ✗ Could not find Piper voice in config.yaml"
+if [ -z "${PIPER_VOICE}" ]; then
+    echo -e "   ${RED}✗${NC} Could not find Piper voice in ${BLUE}config.yaml${NC}"
     exit 1
 fi
 
-echo "   Voice from config: $PIPER_VOICE"
-echo ""
+echo -e "   Voice from config: ${GREEN}${PIPER_VOICE}${NC}"
 
 # Parse voice to construct URL (format: en_GB-alba-medium)
-LANG=$(echo "$PIPER_VOICE" | cut -d'-' -f1)  # en_GB
-VOICE_NAME=$(echo "$PIPER_VOICE" | cut -d'-' -f2)  # alba
-QUALITY=$(echo "$PIPER_VOICE" | cut -d'-' -f3)  # medium
-LANG_SHORT=$(echo "$LANG" | cut -d'_' -f1)  # en
+LANG=$(echo "${PIPER_VOICE}" | cut -d'-' -f1)  # en_GB
+VOICE_NAME=$(echo "${PIPER_VOICE}" | cut -d'-' -f2)  # alba
+QUALITY=$(echo "${PIPER_VOICE}" | cut -d'-' -f3)  # medium
+LANG_SHORT=$(echo "${LANG}" | cut -d'_' -f1)  # en
 
 PIPER_BASE_URL="https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/${LANG_SHORT}/${LANG}/${VOICE_NAME}/${QUALITY}"
-PIPER_ONNX="$PIPER_DIR_BASE/${PIPER_VOICE}.onnx"
-PIPER_JSON="$PIPER_DIR_BASE/${PIPER_VOICE}.onnx.json"
+PIPER_ONNX="${PIPER_DIR_BASE}/${PIPER_VOICE}.onnx"
+PIPER_JSON="${PIPER_DIR_BASE}/${PIPER_VOICE}.onnx.json"
 
-if [ -f "$PIPER_ONNX" ] && [ -f "$PIPER_JSON" ]; then
-    echo "   ✓ Piper model already exists"
+if [ -f "${PIPER_ONNX}" ] && [ -f "${PIPER_JSON}" ]; then
+    echo -e "   ${GREEN}✓${NC} Piper model already exists at: ${BLUE}${PIPER_ONNX}${NC}"
 else
     echo "   Downloading ONNX model..."
-    wget -O "$PIPER_ONNX" "${PIPER_BASE_URL}/${PIPER_VOICE}.onnx" || {
-        echo "   ✗ Failed to download Piper model"
+    wget -O "${PIPER_ONNX}" "${PIPER_BASE_URL}/${PIPER_VOICE}.onnx" || {
+        echo -e "   ${RED}✗${NC} Failed to download Piper model"
         exit 1
     }
 
     echo "   Downloading config..."
-    wget -O "$PIPER_JSON" "${PIPER_BASE_URL}/${PIPER_VOICE}.onnx.json" || {
-        echo "   ✗ Failed to download Piper config"
+    wget -O "${PIPER_JSON}" "${PIPER_BASE_URL}/${PIPER_VOICE}.onnx.json" || {
+        echo -e "   ${RED}✗${NC} Failed to download Piper config"
         exit 1
     }
 
-    echo "   ✓ Piper model installed successfully"
+    echo -e "   ${GREEN}✓${NC} Piper model installed successfully"
 fi
 
-echo ""
-echo "================================================"
-echo "✓ All models downloaded successfully!"
-echo "================================================"
-echo ""
-echo "Model locations:"
-echo "  Vosk:  $VOSK_DIR"
-echo "  Piper: $PIPER_DIR_BASE/"
-echo ""
+echo
+
+# ========================================
+# Ollama LLM Model
+# ========================================
+echo "3. Downloading Ollama LLM Model from config"
+echo
+
+# Check if Ollama is installed and running
+if ! command -v ollama &> /dev/null; then
+    echo -e "   ${RED}✗${NC} Ollama CLI not found. Please install Ollama to download LLM models."
+    echo -e "   ${BLUE}https://ollama.com/docs/installation${NC}"
+    exit 1
+fi
+
+# Extract LLM model from config
+LLM_MODEL=$(grep -E '^[[:space:]]*model:' "${CONFIG_FILE}" | grep -v '^#' | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
+
+if [ -z "${LLM_MODEL}" ]; then
+    echo -e "   ${RED}✗${NC} Could not find LLM model in ${BLUE}config.yaml${NC}"
+    exit 1
+fi
+
+echo -e "   LLM model from config: ${GREEN}${LLM_MODEL}${NC}"
+
+# Check if model is already installed in Ollama
+if ollama list | grep -q "${LLM_MODEL}"; then
+    echo -e "   ${GREEN}✓${NC} LLM model already exists in Ollama"
+else
+    echo "   Pulling LLM model from Ollama registry..."
+    ollama pull "${LLM_MODEL}" || {
+        echo -e "   ${RED}✗${NC} Failed to pull LLM model from Ollama"
+        echo "   Make sure the model name in ${BLUE}config.yaml${NC} is correct and that Ollama is running"
+        exit 1
+    }
+    echo -e "   ${GREEN}✓${NC} LLM model pulled successfully"
+fi
+
+# ========================================
+# Summary
+# ========================================
+echo
+echo ${SEPARATOR}
+echo -e "${GREEN}✓${NC} Downloads complete!"
+echo ${SEPARATOR}
+echo
+echo "Models:"
+echo -e "  Vosk:  ${GREEN}${VOSK_MODEL}${NC}"
+echo -e "  Piper: ${GREEN}${PIPER_VOICE}${NC}"
+echo -e "  LLM:   ${GREEN}${LLM_MODEL}${NC}"
+echo
 echo "You can now run the system with:"
-echo "  cargo run --bin runner"
-echo ""
+echo -e "  ${GREEN}cargo run --bin runner${NC}"
+echo
