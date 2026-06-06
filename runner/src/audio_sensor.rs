@@ -35,6 +35,7 @@ pub enum AudioSensorCommand {
 /// * `event_tx` - Channel to send events to controller
 /// * `cmd_rx` - Channel to receive commands (for enabling/disabling detection)
 /// * `shutdown_rx` - Shutdown signal receiver
+/// * `ready_tx` - Channel to notify runner that system is ready
 ///
 /// # Behavior
 /// Continuously polls AudioController for wake word and speech events.
@@ -44,6 +45,7 @@ pub async fn run_audio_sensor(
     event_tx: mpsc::Sender<Event>,
     mut cmd_rx: mpsc::Receiver<AudioSensorCommand>,
     mut shutdown_rx: broadcast::Receiver<()>,
+    ready_tx: mpsc::Sender<()>,
 ) -> Result<()> {
     log::info!("[Audio Sensor Task] Starting...");
 
@@ -87,6 +89,11 @@ pub async fn run_audio_sensor(
             log::error!("[Audio Sensor Task] Failed to send SystemReady event");
         } else {
             log::info!("[Audio Sensor Task] System ready - Vosk model loaded");
+        }
+
+        // Notify runner that system is ready
+        if ready_tx.blocking_send(()).is_err() {
+            log::error!("[Audio Sensor Task] Failed to send ready notification");
         }
 
         // Poll interval (check every 50ms for low latency)
