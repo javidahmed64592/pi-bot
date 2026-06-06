@@ -13,6 +13,7 @@
 mod audio_sensor;
 mod command_distributor;
 mod green_led_actuator;
+mod lcd_actuator;
 mod pir_sensor;
 mod red_led_actuator;
 mod rgb_led_actuator;
@@ -61,6 +62,7 @@ async fn main() -> Result<()> {
     let (speaker_tx, speaker_rx) = mpsc::channel::<Command>(32);
     let (green_led_tx, green_led_rx) = mpsc::channel::<Command>(32);
     let (red_led_tx, red_led_rx) = mpsc::channel::<Command>(32);
+    let (lcd_tx, lcd_rx) = mpsc::channel::<Command>(32);
 
     // Audio sensor command channel: Command Distributor → Audio Sensor
     let (audio_cmd_tx, audio_cmd_rx) = mpsc::channel::<audio_sensor::AudioSensorCommand>(32);
@@ -184,7 +186,26 @@ async fn main() -> Result<()> {
     log::info!("Speaker actuator task spawned");
 
     // ========================================================================
-    // 6. Spawn Command Distributor Task
+    // 6. Spawn LCD Actuator Task
+    // ========================================================================
+
+    log::info!("Spawning LCD actuator task...");
+
+    // LCD Actuator Task
+    let lcd_task = {
+        let config = config.clone();
+        let shutdown_rx = shutdown_tx.subscribe();
+        tokio::spawn(async move {
+            if let Err(e) = lcd_actuator::run_lcd_actuator(&config, lcd_rx, shutdown_rx).await {
+                log::error!("LCD actuator task failed: {}", e);
+            }
+        })
+    };
+
+    log::info!("LCD actuator task spawned");
+
+    // ========================================================================
+    // 7. Spawn Command Distributor Task
     // ========================================================================
 
     log::info!("Spawning command distributor task...");
@@ -202,6 +223,7 @@ async fn main() -> Result<()> {
                 speaker_tx,
                 green_led_tx,
                 red_led_tx,
+                lcd_tx,
                 audio_cmd_tx,
                 shutdown_rx,
             )
@@ -215,7 +237,7 @@ async fn main() -> Result<()> {
     log::info!("Command distributor task spawned");
 
     // ========================================================================
-    // 7. Spawn AI Controller Task (Heavy: LLM service initialization)
+    // 8. Spawn AI Controller Task (Heavy: LLM service initialization)
     // ========================================================================
 
     log::info!("Spawning AI controller task...");
@@ -235,7 +257,7 @@ async fn main() -> Result<()> {
     log::info!("AI controller task spawned");
 
     // ========================================================================
-    // 8. Override Initial State with Loading Indicators
+    // 9. Override Initial State with Loading Indicators
     // ========================================================================
 
     // Wait for controller to send its initial Ready state commands
@@ -263,7 +285,7 @@ async fn main() -> Result<()> {
     // when it completes initialization and starts processing events
 
     // ========================================================================
-    // 9. Wait for System Ready (Vosk model loaded)
+    // 10. Wait for System Ready (Vosk model loaded)
     // ========================================================================
 
     // Wait for audio sensor to signal that heavy initialization is complete
@@ -271,7 +293,7 @@ async fn main() -> Result<()> {
     let _ = ready_rx.recv().await;
 
     // ========================================================================
-    // 10. System Ready Message
+    // 11. System Ready Message
     // ========================================================================
 
     log::info!("");
@@ -283,7 +305,7 @@ async fn main() -> Result<()> {
     log::info!("");
 
     // ========================================================================
-    // 11. Wait for Shutdown Signal (Ctrl+C)
+    // 12. Wait for Shutdown Signal (Ctrl+C)
     // ========================================================================
 
     tokio::signal::ctrl_c().await?;
@@ -308,6 +330,7 @@ async fn main() -> Result<()> {
                 speaker_task,
                 green_led_task,
                 red_led_task,
+                lcd_task,
                 distributor_task,
                 controller_task,
             );

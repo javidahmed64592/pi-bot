@@ -39,17 +39,17 @@ pub enum Command {
     SetRedLeds(StatusLedPattern),
 
     // ============================================================================
-    // Visual Actuators - Display (Phase 2+)
+    // Visual Actuators - Display (LCD)
     // ============================================================================
-    // Show text on the LCD display (16x2 characters)
-    // line1: Text for first line (max 16 chars)
-    // line2: Text for second line (max 16 chars)
-    // TODO: Add this variant with named fields
-    // ShowText { line1: String, line2: String },
+    /// Display text on the LCD (16x2 characters)
+    /// Text longer than 16 chars will be truncated per line
+    DisplayText { line1: String, line2: String },
 
-    // Clear the display
-    // TODO: Add this variant
-    // ClearDisplay,
+    /// Clear the LCD display
+    ClearDisplay,
+
+    /// Control LCD backlight
+    SetBacklight { on: bool },
 
     // ============================================================================
     // Audio Actuators - Speaker/TTS

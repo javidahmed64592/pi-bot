@@ -62,8 +62,9 @@ pub struct GpioConfig {
 
     /// Status LED pins (green and red indicators)
     pub led_pins: LedPins,
-    // LCD I2C address (Phase 2+)
-    // pub lcd_i2c_address: u8,
+
+    /// LCD I2C address
+    pub lcd_i2c_address: u8,
 }
 
 /// RGB LED pin configuration (3 pins for PWM)
