@@ -21,3 +21,6 @@ env_logger = { workspace = true }
 
 # Error handling
 anyhow = { workspace = true }
+
+# Channels for thread communication
+crossbeam-channel = "0.5"

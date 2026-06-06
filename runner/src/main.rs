@@ -59,6 +59,9 @@ async fn main() -> Result<()> {
     let (green_led_tx, green_led_rx) = mpsc::channel::<Command>(32);
     let (red_led_tx, red_led_rx) = mpsc::channel::<Command>(32);
 
+    // Audio sensor command channel: Command Distributor → Audio Sensor
+    let (audio_cmd_tx, audio_cmd_rx) = mpsc::channel::<audio_sensor::AudioSensorCommand>(32);
+
     // Shutdown channel (broadcast to all tasks)
     let (shutdown_tx, _) = broadcast::channel::<()>(16);
 
@@ -138,7 +141,9 @@ async fn main() -> Result<()> {
         let event_tx = event_tx.clone();
         let shutdown_rx = shutdown_tx.subscribe();
         tokio::spawn(async move {
-            if let Err(e) = audio_sensor::run_audio_sensor(&config, event_tx, shutdown_rx).await {
+            if let Err(e) =
+                audio_sensor::run_audio_sensor(&config, event_tx, audio_cmd_rx, shutdown_rx).await
+            {
                 log::error!("Audio sensor task failed: {}", e);
             }
         })
@@ -188,6 +193,7 @@ async fn main() -> Result<()> {
                 speaker_tx,
                 green_led_tx,
                 red_led_tx,
+                audio_cmd_tx,
                 shutdown_rx,
             )
             .await

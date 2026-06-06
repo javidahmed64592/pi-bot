@@ -79,6 +79,9 @@ struct ControllerState {
     /// Are we currently waiting for speech capture?
     awaiting_speech: bool,
 
+    /// Is speech capture currently active (user is speaking)?
+    speech_capture_active: bool,
+
     /// When did we last detect presence? (for PIR timeout in Silent mode)
     last_presence_time: Instant,
 
@@ -106,6 +109,7 @@ impl ControllerState {
             memory,
             last_interaction: Instant::now(),
             awaiting_speech: false,
+            speech_capture_active: false,
             last_presence_time: Instant::now(),
             config,
         })
@@ -208,6 +212,7 @@ async fn handle_event(
 ) -> Result<()> {
     match event {
         Event::WakeWordDetected => handle_wake_word(state, cmd_tx).await?,
+        Event::SpeechCaptureStarted => handle_speech_capture_started(state, cmd_tx).await?,
         Event::SpeechCaptured(text) => handle_speech_captured(text, state, cmd_tx).await?,
         Event::SpeechComplete => handle_speech_complete(state, cmd_tx).await?,
         Event::SystemReady => handle_system_ready(state, cmd_tx).await?,
@@ -248,6 +253,22 @@ async fn handle_wake_word(
         .send(Command::StartListening)
         .await
         .context("Failed to send StartListening command")?;
+
+    Ok(())
+}
+
+/// Handle speech capture started
+async fn handle_speech_capture_started(
+    state: &mut ControllerState,
+    _cmd_tx: &mpsc::Sender<Command>,
+) -> Result<()> {
+    info!("Speech capture started - user is speaking");
+
+    // Mark that speech capture is active
+    state.speech_capture_active = true;
+
+    // Update interaction timer to prevent timeout during speech
+    state.mark_interaction();
 
     Ok(())
 }
@@ -308,10 +329,17 @@ async fn handle_speech_captured(
     // Update state
     state.mark_interaction();
     state.awaiting_speech = false;
+    state.speech_capture_active = false; // Speech capture complete
 
     // Transition to thinking state
     state.bot_state.conversation_state = ConversationState::Active(ActiveSubState::Thinking);
     send_state_commands(cmd_tx, state).await?;
+
+    // Stop listening while thinking to save resources
+    cmd_tx
+        .send(Command::StopListening)
+        .await
+        .context("Failed to send StopListening command")?;
 
     // Get conversation context from memory
     let history = state.memory.get_context();
@@ -324,6 +352,17 @@ async fn handle_speech_captured(
             error!("LLM generation failed: {}", e);
             let error_msg = "Sorry, I'm having trouble thinking right now. Can you try again?";
 
+            // Transition to speaking state
+            state.bot_state.conversation_state =
+                ConversationState::Active(ActiveSubState::Speaking);
+            send_state_commands(cmd_tx, state).await?;
+
+            // Stop listening to prevent bot from listening to itself
+            cmd_tx
+                .send(Command::StopListening)
+                .await
+                .context("Failed to send StopListening command")?;
+
             // Send error response via TTS
             cmd_tx
                 .send(Command::Speak {
@@ -332,8 +371,7 @@ async fn handle_speech_captured(
                 .await
                 .context("Failed to send error speech command")?;
 
-            // Return to ready state
-            return_to_ready_state(state, cmd_tx).await?;
+            // Stay in Speaking state - we'll transition to Ready when we receive SpeechComplete
             return Ok(());
         }
     };
@@ -350,6 +388,12 @@ async fn handle_speech_captured(
     // Transition to speaking state
     state.bot_state.conversation_state = ConversationState::Active(ActiveSubState::Speaking);
     send_state_commands(cmd_tx, state).await?;
+
+    // Stop listening to prevent bot from listening to itself
+    cmd_tx
+        .send(Command::StopListening)
+        .await
+        .context("Failed to send StopListening command")?;
 
     // Send TTS command
     cmd_tx
@@ -497,11 +541,17 @@ async fn check_conversation_timeout(
     state: &mut ControllerState,
     cmd_tx: &mpsc::Sender<Command>,
 ) -> Result<()> {
-    // Only check timeout if we're in active conversation
+    // Only check timeout if we're in Listening state (waiting for user input)
+    // Don't timeout while Thinking, Speaking, or Learning
     if !matches!(
         state.bot_state.conversation_state,
-        ConversationState::Active(_)
+        ConversationState::Active(ActiveSubState::Listening)
     ) {
+        return Ok(());
+    }
+
+    // Don't timeout if speech capture is currently active (user is speaking)
+    if state.speech_capture_active {
         return Ok(());
     }
 
@@ -530,12 +580,13 @@ async fn return_to_ready_state(
 
     state.bot_state.conversation_state = ConversationState::Ready;
     state.awaiting_speech = false;
+    state.speech_capture_active = false;
 
-    // Stop listening if we were
+    // Resume listening for wake word
     cmd_tx
-        .send(Command::StopListening)
+        .send(Command::StartListening)
         .await
-        .context("Failed to send StopListening command")?;
+        .context("Failed to send StartListening command")?;
 
     // Send state commands
     send_state_commands(cmd_tx, state).await?;

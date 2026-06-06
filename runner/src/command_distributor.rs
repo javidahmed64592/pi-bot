@@ -11,6 +11,8 @@ use anyhow::Result;
 use bot_core::Command;
 use tokio::sync::{broadcast, mpsc};
 
+use crate::audio_sensor::AudioSensorCommand;
+
 /// Run command distributor task
 ///
 /// # Arguments
@@ -19,6 +21,7 @@ use tokio::sync::{broadcast, mpsc};
 /// * `speaker_tx` - Channel to speaker actuator
 /// * `green_led_tx` - Channel to green LED actuator
 /// * `red_led_tx` - Channel to red LED actuator
+/// * `audio_cmd_tx` - Channel to audio sensor (for enabling/disabling detection)
 /// * `shutdown_rx` - Shutdown signal receiver
 ///
 /// # Behavior
@@ -32,6 +35,7 @@ pub async fn run_command_distributor(
     speaker_tx: mpsc::Sender<Command>,
     green_led_tx: mpsc::Sender<Command>,
     red_led_tx: mpsc::Sender<Command>,
+    audio_cmd_tx: mpsc::Sender<AudioSensorCommand>,
     mut shutdown_rx: broadcast::Receiver<()>,
 ) -> Result<()> {
     log::info!("[Command Distributor Task] Starting...");
@@ -70,11 +74,22 @@ pub async fn run_command_distributor(
                         }
                     }
 
+                    // Audio sensor commands
+                    Command::StartListening => {
+                        if let Err(e) = audio_cmd_tx.send(AudioSensorCommand::EnableDetection).await {
+                            log::error!("[Command Distributor] Failed to send to audio sensor: {}", e);
+                        }
+                    }
+
+                    Command::StopListening => {
+                        if let Err(e) = audio_cmd_tx.send(AudioSensorCommand::DisableDetection).await {
+                            log::error!("[Command Distributor] Failed to send to audio sensor: {}", e);
+                        }
+                    }
+
                     // System state commands (not sent to actuators, handled by controller)
                     Command::LockBot
                     | Command::UnlockBot
-                    | Command::StartListening
-                    | Command::StopListening
                     | Command::EnterConversationState(_)
                     | Command::SetLightingMode(_) => {
                         // These are informational or handled elsewhere
