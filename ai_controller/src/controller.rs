@@ -85,6 +85,9 @@ struct ControllerState {
     /// When did we last detect presence? (for PIR timeout in Silent mode)
     last_presence_time: Instant,
 
+    /// Pending LCD command to send when speech playback starts
+    pending_lcd_command: Option<Command>,
+
     /// System configuration
     config: SystemConfig,
 }
@@ -111,6 +114,7 @@ impl ControllerState {
             awaiting_speech: false,
             speech_capture_active: false,
             last_presence_time: Instant::now(),
+            pending_lcd_command: None,
             config,
         })
     }
@@ -125,6 +129,92 @@ impl ControllerState {
     fn mark_interaction(&mut self) {
         self.last_interaction = Instant::now();
         self.bot_state.mark_interaction();
+    }
+}
+
+// ============================================================================
+// Response Parsing Helpers
+// ============================================================================
+
+/// Parsed LLM response containing spoken text and optional commands
+#[derive(Debug)]
+struct ParsedResponse {
+    /// Text to be spoken via TTS
+    spoken_text: String,
+    /// Optional LCD display command
+    lcd_command: Option<Command>,
+}
+
+/// Parse LLM response to extract spoken text and commands
+///
+/// Format: "Some spoken text\nCOMMAND: DisplayText|<line1>|<line2>|<duration_ms>"
+/// Handles markdown formatting and extracts clean command
+/// Only extracts the FIRST command found to prevent multiple LCD displays
+fn parse_llm_response(response: &str) -> ParsedResponse {
+    let mut spoken_text = response.to_string();
+    let mut lcd_command = None;
+
+    // Look for FIRST COMMAND: prefix (may be wrapped in markdown **)
+    if let Some(cmd_start) = response.find("COMMAND:") {
+        // Get text before command (strip trailing markdown/whitespace)
+        spoken_text = response[..cmd_start]
+            .trim()
+            .trim_end_matches('*')
+            .trim()
+            .to_string();
+
+        // Extract command line (everything from COMMAND: to end of line or next **)
+        let after_command = &response[cmd_start + 8..]; // Skip "COMMAND:"
+        let command_line = after_command
+            .lines()
+            .next()
+            .unwrap_or("")
+            .trim()
+            .trim_matches('*') // Strip markdown bold
+            .trim();
+
+        debug!("Extracted command line: '{}'", command_line);
+
+        // Parse DisplayText command: DisplayText|<line1>|<line2>|<duration_ms>
+        if let Some(display_cmd) = command_line.strip_prefix("DisplayText|") {
+            let parts: Vec<&str> = display_cmd.split('|').collect();
+
+            if parts.len() >= 3 {
+                let line1 = parts[0].to_string();
+                let line2 = parts[1].to_string();
+                let duration_str = parts[2].trim();
+
+                // Parse duration (handle potential errors gracefully)
+                if let Ok(duration_ms) = duration_str.parse::<u64>() {
+                    lcd_command = Some(Command::DisplayText {
+                        line1: line1.clone(),
+                        line2: line2.clone(),
+                        duration_ms: Some(duration_ms),
+                    });
+
+                    info!(
+                        "Parsed LCD command: line1='{}', line2='{}', duration={}ms",
+                        line1, line2, duration_ms
+                    );
+                } else {
+                    warn!(
+                        "Failed to parse duration '{}' from command line: '{}'",
+                        duration_str, command_line
+                    );
+                }
+            } else {
+                warn!(
+                    "Invalid DisplayText command format (expected 3 parts, got {}): '{}'",
+                    parts.len(),
+                    command_line
+                );
+            }
+        }
+    }
+
+    ParsedResponse {
+        spoken_text,
+        lcd_command,
     }
 }
 
@@ -214,6 +304,7 @@ async fn handle_event(
         Event::WakeWordDetected => handle_wake_word(state, cmd_tx).await?,
         Event::SpeechCaptureStarted => handle_speech_capture_started(state, cmd_tx).await?,
         Event::SpeechCaptured(text) => handle_speech_captured(text, state, cmd_tx).await?,
+        Event::SpeechPlaybackStarted => handle_speech_playback_started(state, cmd_tx).await?,
         Event::SpeechComplete => handle_speech_complete(state, cmd_tx).await?,
         Event::SystemReady => handle_system_ready(state, cmd_tx).await?,
         Event::PresenceDetected => handle_presence_detected(state, cmd_tx).await?,
@@ -269,6 +360,25 @@ async fn handle_speech_capture_started(
 
     // Update interaction timer to prevent timeout during speech
     state.mark_interaction();
+
+    Ok(())
+}
+
+/// Handle speech playback started
+async fn handle_speech_playback_started(
+    state: &mut ControllerState,
+    cmd_tx: &mpsc::Sender<Command>,
+) -> Result<()> {
+    debug!("Speech playback started");
+
+    // Send pending LCD command now that speech is starting
+    if let Some(lcd_cmd) = state.pending_lcd_command.take() {
+        info!("Sending LCD command synchronized with speech start");
+        cmd_tx
+            .send(lcd_cmd)
+            .await
+            .context("Failed to send LCD command")?;
+    }
 
     Ok(())
 }
@@ -378,11 +488,14 @@ async fn handle_speech_captured(
 
     info!("LLM response: '{}'", response);
 
+    // Parse response to extract spoken text and commands
+    let parsed = parse_llm_response(&response);
+
     // Transition to learning state (brief, store in memory)
     state.bot_state.conversation_state = ConversationState::Active(ActiveSubState::Learning);
     send_state_commands(cmd_tx, state).await?;
 
-    // Store exchange in memory
+    // Store exchange in memory (store original response with commands for context)
     state.memory.add_exchange(text, response.clone());
 
     // Transition to speaking state
@@ -395,9 +508,17 @@ async fn handle_speech_captured(
         .await
         .context("Failed to send StopListening command")?;
 
-    // Send TTS command
+    // Store LCD command to send when speech playback starts (for better timing)
+    if let Some(lcd_cmd) = parsed.lcd_command {
+        info!("Storing LCD command to send when speech starts");
+        state.pending_lcd_command = Some(lcd_cmd);
+    }
+
+    // Send TTS command (speak the parsed text without the command part)
     cmd_tx
-        .send(Command::Speak { text: response })
+        .send(Command::Speak {
+            text: parsed.spoken_text,
+        })
         .await
         .context("Failed to send speak command")?;
 

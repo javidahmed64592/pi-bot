@@ -199,6 +199,52 @@ impl LcdController {
         Ok(())
     }
 
+    /// Display text with automatic clear and backlight off after duration
+    ///
+    /// # Arguments
+    /// * `line1` - Text for the first line (max 16 chars)
+    /// * `line2` - Text for the second line (max 16 chars)
+    /// * `duration` - Duration to display the message before clearing
+    ///
+    /// # Behavior
+    /// 1. Turns backlight on
+    /// 2. Displays the text on both lines
+    /// 3. Waits for the specified duration
+    /// 4. Clears the display
+    /// 5. Turns backlight off
+    pub async fn display_with_duration(
+        &mut self,
+        line1: &str,
+        line2: &str,
+        duration: std::time::Duration,
+    ) -> Result<()> {
+        // Turn backlight on
+        self.backlight_on()?;
+
+        // Display text
+        self.write_line(0, line1)?;
+        self.write_line(1, line2)?;
+
+        log::info!(
+            "[{}] Displaying for {:?}: '{}' / '{}'",
+            self.label,
+            duration,
+            line1,
+            line2
+        );
+
+        // Wait for duration
+        tokio::time::sleep(duration).await;
+
+        // Clear and turn off backlight
+        self.clear()?;
+        self.backlight_off()?;
+
+        log::info!("[{}] Display cleared after timeout", self.label);
+
+        Ok(())
+    }
+
     /// Turn backlight on
     pub fn backlight_on(&mut self) -> Result<()> {
         self.backlight_on = true;

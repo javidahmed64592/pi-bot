@@ -1,6 +1,7 @@
 //! LCD Display Test Binary
 //!
 //! Test LCD display by specifying I2C address via CLI arguments.
+//! Tests basic operations, backlight control, and timed display functionality.
 
 use actuators::LcdController;
 use anyhow::{Context, Result};
@@ -31,42 +32,91 @@ async fn main() -> Result<()> {
 
     info!("=== LCD Display Test ===");
     info!("Testing LCD at I2C address: 0x{:02X}", address);
-    info!("This test will:");
-    info!("  • Initialize the I2C LCD display");
-    info!("  • Display test messages on both rows");
-    info!("  • Test backlight on/off");
     info!("Press Ctrl+C to exit");
 
     // Initialize LCD controller
     let mut lcd = LcdController::new(address, "LCD Test")?;
 
-    // Display test messages
+    // ========================================================================
+    // Test 1: Backlight Control
+    // ========================================================================
+    info!("\n--- Test 1: Backlight Control ---");
+
+    info!("Turning backlight OFF...");
+    lcd.backlight_off()?;
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+    info!("Turning backlight ON...");
+    lcd.backlight_on()?;
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+    // ========================================================================
+    // Test 2: Basic Display
+    // ========================================================================
+    info!("\n--- Test 2: Basic Display ---");
+
     lcd.write_line(0, "Hello, World!")?;
     lcd.write_line(1, "LCD Working!")?;
-
-    info!("Test messages displayed.");
-    info!("Backlight will blink in 3 seconds...");
-
+    info!("Test messages displayed");
     tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
 
-    // Test backlight
-    for i in 1..=3 {
-        info!("Blink {}/3 - Backlight OFF", i);
-        lcd.backlight_off()?;
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    // ========================================================================
+    // Test 3: Clear Display
+    // ========================================================================
+    info!("\n--- Test 3: Clear Display ---");
 
-        info!("Blink {}/3 - Backlight ON", i);
-        lcd.backlight_on()?;
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-    }
+    lcd.clear()?;
+    info!("Display cleared");
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
-    info!("Test complete! LCD is working correctly.");
+    // ========================================================================
+    // Test 4: Backlight Off
+    // ========================================================================
+    info!("\n--- Test 4: Backlight Off ---");
+
+    lcd.backlight_off()?;
+    info!("Backlight turned off");
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+    // ========================================================================
+    // Test 5: Timed Display (New Feature)
+    // ========================================================================
+    info!("\n--- Test 5: Timed Display (New Feature) ---");
+    info!("This test demonstrates the new 'display with duration' functionality:");
+    info!("  • Turns backlight on");
+    info!("  • Displays message");
+    info!("  • Waits for specified duration");
+    info!("  • Clears display and turns backlight off automatically");
+
+    // Test with 5 second display
+    lcd.display_with_duration("<(^-^)>", "I helped!", tokio::time::Duration::from_secs(5))
+        .await?;
+
+    info!("First timed display complete (5 seconds)");
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+    // Test with 3 second display
+    lcd.display_with_duration(
+        "(◕‿◕)",
+        "Happy to help!",
+        tokio::time::Duration::from_secs(3),
+    )
+    .await?;
+
+    info!("Second timed display complete (3 seconds)");
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+    // ========================================================================
+    // Test Complete
+    // ========================================================================
+    info!("\n=== All Tests Complete ===");
+    info!("LCD is working correctly!");
     info!("Press Ctrl+C to exit.");
 
     // Keep running
     tokio::signal::ctrl_c().await?;
 
-    // Clear on exit
+    // Clean up on exit
     lcd.clear()?;
     lcd.backlight_off()?;
 

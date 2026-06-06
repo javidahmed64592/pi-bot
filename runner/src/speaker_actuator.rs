@@ -57,6 +57,11 @@ pub async fn run_speaker_actuator(
                         // Generate audio with Piper TTS
                         match tts.synthesize(&text).await {
                             Ok(audio_data) => {
+                                // Notify controller that playback is starting
+                                if let Err(e) = event_tx.send(Event::SpeechPlaybackStarted).await {
+                                    log::error!("[Speaker Actuator Task] Failed to send SpeechPlaybackStarted event: {}", e);
+                                }
+
                                 // Play audio through speaker
                                 if let Err(e) = speaker.play(&audio_data) {
                                     log::error!("[Speaker Actuator Task] Failed to play audio: {}", e);

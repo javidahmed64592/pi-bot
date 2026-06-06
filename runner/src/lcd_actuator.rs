@@ -53,17 +53,26 @@ pub async fn run_lcd_actuator(
             // Receive commands
             Some(command) = command_rx.recv() => {
                 match command {
-                    Command::DisplayText { line1, line2 } => {
-                        log::debug!("[LCD Actuator Task] DisplayText: '{}' / '{}'", line1, line2);
+                    Command::DisplayText { line1, line2, duration_ms } => {
+                        log::debug!("[LCD Actuator Task] DisplayText: '{}' / '{}' (duration: {:?}ms)", line1, line2, duration_ms);
 
-                        // Write line 1
-                        if let Err(e) = lcd.write_line(0, &line1) {
-                            log::error!("[LCD Actuator Task] Failed to write line 1: {}", e);
-                        }
+                        // If duration is specified, use the timed display method
+                        if let Some(duration) = duration_ms {
+                            let duration = std::time::Duration::from_millis(duration);
+                            if let Err(e) = lcd.display_with_duration(&line1, &line2, duration).await {
+                                log::error!("[LCD Actuator Task] Failed to display with duration: {}", e);
+                            }
+                        } else {
+                            // Original behavior: just write the lines without auto-clear
+                            // Write line 1
+                            if let Err(e) = lcd.write_line(0, &line1) {
+                                log::error!("[LCD Actuator Task] Failed to write line 1: {}", e);
+                            }
 
-                        // Write line 2
-                        if let Err(e) = lcd.write_line(1, &line2) {
-                            log::error!("[LCD Actuator Task] Failed to write line 2: {}", e);
+                            // Write line 2
+                            if let Err(e) = lcd.write_line(1, &line2) {
+                                log::error!("[LCD Actuator Task] Failed to write line 2: {}", e);
+                            }
                         }
                     }
 
@@ -101,6 +110,11 @@ pub async fn run_lcd_actuator(
                 // Clear display on shutdown
                 if let Err(e) = lcd.clear() {
                     log::error!("[LCD Actuator Task] Failed to clear display on shutdown: {}", e);
+                }
+
+                // Turn off backlight on shutdown
+                if let Err(e) = lcd.backlight_off() {
+                    log::error!("[LCD Actuator Task] Failed to turn off backlight on shutdown: {}", e);
                 }
 
                 break;

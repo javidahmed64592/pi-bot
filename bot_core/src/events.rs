@@ -33,6 +33,11 @@ pub enum Event {
     /// The String contains the transcribed text from the user
     SpeechCaptured(String),
 
+    /// Speech playback has started
+    /// Sent by speaker actuator when TTS audio begins playing
+    /// Used to synchronize LCD display with speech output
+    SpeechPlaybackStarted,
+
     /// Speech playback has completed
     /// Sent by speaker actuator when TTS audio finishes playing
     /// Used to synchronize state transitions (Speaking → Ready)

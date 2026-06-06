@@ -43,7 +43,12 @@ pub enum Command {
     // ============================================================================
     /// Display text on the LCD (16x2 characters)
     /// Text longer than 16 chars will be truncated per line
-    DisplayText { line1: String, line2: String },
+    /// If duration_ms is Some, the display will automatically clear and turn off after that duration
+    DisplayText {
+        line1: String,
+        line2: String,
+        duration_ms: Option<u64>,
+    },
 
     /// Clear the LCD display
     ClearDisplay,
