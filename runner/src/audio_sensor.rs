@@ -13,7 +13,6 @@
 
 use anyhow::Result;
 use bot_core::{Event, SystemConfig};
-use crossbeam_channel;
 use sensors::AudioController;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
