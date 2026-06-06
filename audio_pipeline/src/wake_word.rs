@@ -152,6 +152,12 @@ pub struct WakeWordDetector {
 
     /// STT configuration (timeouts, thresholds)
     stt_config: SttConfig,
+
+    /// Whether the audio processing thread should feed audio into Vosk.
+    /// When false, frames are drained from the channel and discarded so that
+    /// the CPAL stream stays healthy but Vosk does no work and cannot
+    /// accumulate wake-word or speech-capture state.
+    detection_enabled: Arc<AtomicBool>,
 }
 
 impl WakeWordDetector {
@@ -217,6 +223,7 @@ impl WakeWordDetector {
             speech_start_time: Arc::new(Mutex::new(None)),
             last_speech_time: Arc::new(Mutex::new(None)),
             stt_config,
+            detection_enabled: Arc::new(AtomicBool::new(true)),
         })
     }
 
@@ -284,6 +291,7 @@ impl WakeWordDetector {
         let speech_start_time = Arc::clone(&self.speech_start_time);
         let last_speech_time = Arc::clone(&self.last_speech_time);
         let stt_config = self.stt_config.clone();
+        let detection_enabled = Arc::clone(&self.detection_enabled);
 
         let processing_thread = thread::spawn(move || {
             Self::audio_processing_thread(
@@ -301,6 +309,7 @@ impl WakeWordDetector {
                 speech_start_time,
                 last_speech_time,
                 stt_config,
+                detection_enabled,
             );
         });
 
@@ -350,6 +359,7 @@ impl WakeWordDetector {
         speech_start_time: Arc<Mutex<Option<std::time::Instant>>>,
         last_speech_time: Arc<Mutex<Option<std::time::Instant>>>,
         stt_config: SttConfig,
+        detection_enabled: Arc<AtomicBool>,
     ) {
         let mut buffer: Vec<i16> = Vec::with_capacity(8000);
         let mut frame_count = 0u64;
@@ -365,6 +375,13 @@ impl WakeWordDetector {
         while !stop_flag.load(Ordering::Relaxed) {
             match audio_rx.recv_timeout(std::time::Duration::from_millis(100)) {
                 Ok(frame) => {
+                    // Discard frame without touching Vosk when detection is disabled.
+                    // This prevents wake-word or speech-capture state from accumulating
+                    // while the bot is thinking or speaking.
+                    if !detection_enabled.load(Ordering::Relaxed) {
+                        continue;
+                    }
+
                     frame_count += 1;
 
                     // Log every 50 frames (~1 second at typical buffer sizes)
@@ -768,6 +785,31 @@ impl WakeWordDetector {
     /// Get current detector mode
     pub fn mode(&self) -> DetectorMode {
         *self.mode.lock().unwrap()
+    }
+
+    /// Reset all detector state back to wake word listening mode
+    ///
+    /// Clears any pending wake word detections, captured speech, and forces the
+    /// detector back to WakeWord mode. Safe to call at any time.
+    ///
+    /// Use this when disabling or re-enabling detection to ensure no stale
+    /// detections accumulated in the background thread are served later.
+    pub fn reset_to_wake_word_mode(&self) {
+        *self.detected.lock().unwrap() = false;
+        *self.captured_speech.lock().unwrap() = None;
+        *self.mode.lock().unwrap() = DetectorMode::WakeWord;
+        *self.speech_start_time.lock().unwrap() = None;
+        *self.last_speech_time.lock().unwrap() = None;
+    }
+
+    /// Enable or disable audio processing in the background thread.
+    ///
+    /// When `false`, the processing thread drains incoming audio frames without
+    /// running Vosk, so no CPU is spent on recognition and no state accumulates.
+    /// Call `reset_to_wake_word_mode()` before re-enabling to flush any state
+    /// that may have built up just before disabling.
+    pub fn set_detection_enabled(&self, enabled: bool) {
+        self.detection_enabled.store(enabled, Ordering::Relaxed);
     }
 
     /// Finalize speech capture by processing the buffer and extracting text

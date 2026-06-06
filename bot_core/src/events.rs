@@ -25,6 +25,10 @@ pub enum Event {
     /// This triggers transition from Ready → Active state
     WakeWordDetected,
 
+    /// Speech capture has started (after wake word detected)
+    /// Indicates the system is actively listening and transcribing user speech
+    SpeechCaptureStarted,
+
     /// Speech was captured and transcribed by Vosk
     /// The String contains the transcribed text from the user
     SpeechCaptured(String),
@@ -98,7 +102,10 @@ impl Event {
     pub fn is_audio_event(&self) -> bool {
         matches!(
             self,
-            Event::WakeWordDetected | Event::SpeechCaptured(_) | Event::AmbientNoiseLevel(_)
+            Event::WakeWordDetected
+                | Event::SpeechCaptureStarted
+                | Event::SpeechCaptured(_)
+                | Event::AmbientNoiseLevel(_)
         )
     }
 

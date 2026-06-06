@@ -20,12 +20,21 @@ use std::thread;
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
 
+/// Audio sensor commands (for controlling detection)
+#[derive(Debug, Clone)]
+pub enum AudioSensorCommand {
+    EnableDetection,
+    DisableDetection,
+}
+
 /// Run audio sensor task in a dedicated thread
 ///
 /// # Arguments
 /// * `config` - System configuration with audio settings
 /// * `event_tx` - Channel to send events to controller
+/// * `cmd_rx` - Channel to receive commands (for enabling/disabling detection)
 /// * `shutdown_rx` - Shutdown signal receiver
+/// * `ready_tx` - Channel to notify runner that system is ready
 ///
 /// # Behavior
 /// Continuously polls AudioController for wake word and speech events.
@@ -33,7 +42,9 @@ use tokio::sync::{broadcast, mpsc};
 pub async fn run_audio_sensor(
     config: &SystemConfig,
     event_tx: mpsc::Sender<Event>,
+    mut cmd_rx: mpsc::Receiver<AudioSensorCommand>,
     mut shutdown_rx: broadcast::Receiver<()>,
+    ready_tx: mpsc::Sender<()>,
 ) -> Result<()> {
     log::info!("[Audio Sensor Task] Starting...");
 
@@ -41,12 +52,16 @@ pub async fn run_audio_sensor(
     let shutdown_flag = Arc::new(AtomicBool::new(false));
     let shutdown_flag_clone = shutdown_flag.clone();
 
+    // Create crossbeam channel for sending commands to blocking thread
+    let (cmd_tx_crossbeam, cmd_rx_crossbeam) = crossbeam_channel::unbounded::<AudioSensorCommand>();
+
     // Spawn blocking thread for audio processing
     let config_clone = config.clone();
     let event_tx_clone = event_tx.clone();
     let audio_thread = thread::spawn(move || {
         let config = config_clone;
         let event_tx = event_tx_clone;
+        let cmd_rx = cmd_rx_crossbeam;
 
         // Initialize audio controller
         let mut audio = match AudioController::new(&config, "Audio Sensor") {
@@ -75,6 +90,11 @@ pub async fn run_audio_sensor(
             log::info!("[Audio Sensor Task] System ready - Vosk model loaded");
         }
 
+        // Notify runner that system is ready
+        if ready_tx.blocking_send(()).is_err() {
+            log::error!("[Audio Sensor Task] Failed to send ready notification");
+        }
+
         // Poll interval (check every 50ms for low latency)
         let poll_interval = Duration::from_millis(50);
 
@@ -83,6 +103,20 @@ pub async fn run_audio_sensor(
             if shutdown_flag_clone.load(Ordering::Relaxed) {
                 log::info!("[Audio Sensor Task] Shutdown flag set");
                 break;
+            }
+
+            // Check for commands (non-blocking)
+            while let Ok(cmd) = cmd_rx.try_recv() {
+                match cmd {
+                    AudioSensorCommand::EnableDetection => {
+                        log::info!("[Audio Sensor Task] Enabling audio detection");
+                        audio.enable_detection();
+                    }
+                    AudioSensorCommand::DisableDetection => {
+                        log::info!("[Audio Sensor Task] Disabling audio detection");
+                        audio.disable_detection();
+                    }
+                }
             }
 
             // Poll audio controller
@@ -101,6 +135,21 @@ pub async fn run_audio_sensor(
         }
 
         log::info!("[Audio Sensor Task] Audio thread stopped");
+    });
+
+    // Forward commands from async tokio channel to crossbeam channel
+    let _cmd_forwarder = tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                Some(cmd) = cmd_rx.recv() => {
+                    if cmd_tx_crossbeam.send(cmd).is_err() {
+                        log::error!("[Audio Sensor Task] Failed to forward command (thread stopped)");
+                        break;
+                    }
+                }
+                else => break,
+            }
+        }
     });
 
     // Wait for shutdown signal in async context

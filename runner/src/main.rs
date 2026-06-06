@@ -50,6 +50,9 @@ async fn main() -> Result<()> {
     // Event channel: Sensors → Controller
     let (event_tx, event_rx) = mpsc::channel::<Event>(32);
 
+    // System ready notification channel (for waiting on heavy component initialization)
+    let (ready_tx, mut ready_rx) = mpsc::channel::<()>(1);
+
     // Controller command channel: Controller → Command Distributor
     let (controller_cmd_tx, controller_cmd_rx) = mpsc::channel::<Command>(32);
 
@@ -58,6 +61,9 @@ async fn main() -> Result<()> {
     let (speaker_tx, speaker_rx) = mpsc::channel::<Command>(32);
     let (green_led_tx, green_led_rx) = mpsc::channel::<Command>(32);
     let (red_led_tx, red_led_rx) = mpsc::channel::<Command>(32);
+
+    // Audio sensor command channel: Command Distributor → Audio Sensor
+    let (audio_cmd_tx, audio_cmd_rx) = mpsc::channel::<audio_sensor::AudioSensorCommand>(32);
 
     // Shutdown channel (broadcast to all tasks)
     let (shutdown_tx, _) = broadcast::channel::<()>(16);
@@ -138,7 +144,15 @@ async fn main() -> Result<()> {
         let event_tx = event_tx.clone();
         let shutdown_rx = shutdown_tx.subscribe();
         tokio::spawn(async move {
-            if let Err(e) = audio_sensor::run_audio_sensor(&config, event_tx, shutdown_rx).await {
+            if let Err(e) = audio_sensor::run_audio_sensor(
+                &config,
+                event_tx,
+                audio_cmd_rx,
+                shutdown_rx,
+                ready_tx,
+            )
+            .await
+            {
                 log::error!("Audio sensor task failed: {}", e);
             }
         })
@@ -188,6 +202,7 @@ async fn main() -> Result<()> {
                 speaker_tx,
                 green_led_tx,
                 red_led_tx,
+                audio_cmd_tx,
                 shutdown_rx,
             )
             .await
@@ -248,7 +263,15 @@ async fn main() -> Result<()> {
     // when it completes initialization and starts processing events
 
     // ========================================================================
-    // 9. System Ready Message
+    // 9. Wait for System Ready (Vosk model loaded)
+    // ========================================================================
+
+    // Wait for audio sensor to signal that heavy initialization is complete
+    log::info!("Waiting for heavy components to finish initialization...");
+    let _ = ready_rx.recv().await;
+
+    // ========================================================================
+    // 10. System Ready Message
     // ========================================================================
 
     log::info!("");
@@ -260,7 +283,7 @@ async fn main() -> Result<()> {
     log::info!("");
 
     // ========================================================================
-    // 10. Wait for Shutdown Signal (Ctrl+C)
+    // 11. Wait for Shutdown Signal (Ctrl+C)
     // ========================================================================
 
     tokio::signal::ctrl_c().await?;
