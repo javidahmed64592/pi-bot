@@ -160,11 +160,11 @@ SetColor(RgbColor),
 ### Hardware Test Binaries
 
 Each hardware component has a standalone test binary in `src/bin/`:
-- `rgb_led_test.rs`: Test RGB LED color changes
-- `status_led_test.rs`: Test green/red status LEDs
-- `pir_test.rs`: Test motion sensor
-- `stt_test.rs`: Test speech-to-text
-- `wake_word_test.rs`: Test wake word detection
+- `rgb-led-test.rs`: Test RGB LED color changes
+- `status-led-test.rs`: Test green/red status LEDs
+- `pir-test.rs`: Test motion sensor
+- `stt-test.rs`: Test speech-to-text
+- `wake-word-test.rs`: Test wake word detection
 - `tts-test.rs`: Test text-to-speech
 
 **Purpose**: Verify hardware wiring and GPIO config before system integration
@@ -359,9 +359,9 @@ cargo run --bin runner --release
 ### Testing Hardware
 ```bash
 # Test individual components
-cargo run --bin rgb_led_test --release
-cargo run --bin pir_test --release
-cargo run --bin stt_test --release
+cargo run --bin rgb-led-test --release
+cargo run --bin pir-test --release
+cargo run --bin stt-test --release
 ```
 
 ### Debugging
