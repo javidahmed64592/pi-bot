@@ -190,7 +190,7 @@ pub struct MemoryConfig {
     /// Directory for session storage
     pub session_storage: String,
 
-    /// Path to long-term memory JSON file
+    /// Directory for long-term memory (facts database)
     pub long_term_storage: String,
 
     /// Maximum number of recent messages to keep in short-term memory
@@ -198,6 +198,51 @@ pub struct MemoryConfig {
 
     /// Enable automatic fact extraction from conversations
     pub fact_extraction_enabled: bool,
+
+    /// Embeddings configuration for semantic search (Phase 2.5)
+    #[serde(default)]
+    pub embeddings: Option<EmbeddingsConfig>,
+
+    /// Search configuration for semantic memory
+    #[serde(default = "default_search_config")]
+    pub search: SearchConfig,
+}
+
+/// Embeddings model configuration for semantic search
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EmbeddingsConfig {
+    /// Path to ONNX model file
+    pub model_path: String,
+
+    /// Path to tokenizer JSON file
+    pub tokenizer_path: String,
+
+    /// Embedding dimensions (384 for all-MiniLM-L6-v2)
+    pub dimensions: usize,
+
+    /// Enable embeddings (set to false to disable semantic memory)
+    pub enabled: bool,
+}
+
+/// Search configuration for semantic memory
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SearchConfig {
+    /// Number of top facts to retrieve
+    pub top_k: usize,
+
+    /// Minimum cosine similarity threshold (0.0-1.0)
+    pub min_similarity: f32,
+
+    /// Maximum number of facts to store
+    pub max_facts: usize,
+}
+
+fn default_search_config() -> SearchConfig {
+    SearchConfig {
+        top_k: 5,
+        min_similarity: 0.7,
+        max_facts: 1000,
+    }
 }
 
 // ============================================================================

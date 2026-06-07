@@ -100,9 +100,22 @@ llm:
 # Memory Configuration
 memory:
   session_storage: "data/sessions/"
-  long_term_storage: "data/memories.json"
+  long_term_storage: "data/memory/"
   max_short_term: 10
   fact_extraction_enabled: true
+
+  # Embeddings for semantic search
+  embeddings:
+    model_path: "models/embeddings/all-MiniLM-L6-v2.onnx"
+    tokenizer_path: "models/embeddings/all-MiniLM-L6-v2_tokenizer.json"
+    dimensions: 384
+    enabled: true  # Set to false to disable semantic memory
+
+  # Search configuration
+  search:
+    top_k: 5              # Return top 5 relevant facts
+    min_similarity: 0.7   # Minimum cosine similarity (0.0-1.0)
+    max_facts: 1000       # Maximum facts to store
 
 # Bot Behavior
 behavior:
