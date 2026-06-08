@@ -11,6 +11,7 @@ This document defines Pi Bot's state model that separates **conversation behavio
 3. **Bot-Initiated Speech**: Observing → Active(Speaking) directly (bot speaks first, doesn't wait for user)
 4. **Always Responsive**: Bot responds to wake word even in Silent mode (just more concisely)
 5. **Active Overrides Ambient**: Conversation states always show state-based colors, even if ambient lighting is configured
+6. **Controller Owns LED State**: The AI controller is the sole authority over all LED state; nothing else writes to LEDs
 
 ## Core Insight
 
@@ -25,6 +26,32 @@ This allows flexible combinations like:
 - Ambient lighting while bot stays silent (bedtime scenario)
 - State-based lighting during conversation (default)
 - Minimal lighting during meetings
+
+---
+
+## System Startup & Loading State
+
+Before the bot enters any conversation state, it goes through a **startup phase** where hardware components initialise one by one.
+
+### Visual Indicators
+
+| Phase | RGB LED | Green LEDs | Red LEDs |
+|-------|---------|------------|----------|
+| **App start → actuators ready** | Red breathing (dim) | Off | Breathing |
+| **Actuators ready → sensors ready** | Red breathing | Off | Breathing |
+| **All components ready (Ready state)** | Config-defined pattern | Solid | Off |
+| **Shutdown** | Off | Off | Off |
+
+### Startup Sequence
+
+1. Runner spawns controller + command distributor
+2. Runner spawns actuators (RGB/Green/Red LEDs, Speaker, LCD)
+   - Each actuator defaults to its loading visual immediately on init
+   - Each sends `ComponentReady` to the controller when hardware is ready
+3. Controller receives 5 × `ComponentReady` → sends loading-state commands
+4. Runner spawns sensors (PIR, Audio/Vosk)
+   - Each sends `ComponentReady` when ready (Vosk loading takes ~10-30s)
+5. Controller receives all 7 × `ComponentReady` → transitions to `Ready` state
 
 ---
 
