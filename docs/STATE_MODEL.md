@@ -81,15 +81,21 @@ These determine **what the bot does** (when it talks, when it listens, when it's
 **What it means**: Bot noticed something interesting and is deciding whether to speak
 
 **Behavior**:
-- Evaluates context (user busy? appropriate time? presence?)
-- Decides whether to initiate conversation
-- If yes: generates observation-based opener → Active(Speaking)
-- If no: returns to Ready
+- Triggered by a randomly-chosen timer (configured via `behavior.passive_observation_interval`)
+- Collects `ObservationContext`: presence duration, time of day, minutes since last interaction, recent memory facts
+- Applies a weighted probability to decide whether to speak:
+  - Base probability: 20%
+  - +10% per 30 minutes of continuous presence (max +40%)
+  - +10% per 15 minutes without talking (max +30%)
+  - Hard ceiling: 90%
+- If yes: generates a conversation opener via LLM → `Active(Thinking → Learning → Speaking)`
+- If no: returns silently to `Ready` (a new timer is scheduled on the next tick)
+- Never triggers if user is not present (PIR must be detecting presence)
 
-**Duration**: Brief (2-5 seconds max)
+**Duration**: Brief — LLM generation time only (~2-10s on Pi 5)
 
 **Transitions**:
-- → **Active(Speaking)**: Bot decides to speak (generates greeting/observation)
+- → **Active(Thinking)**: Bot decides to speak (generates opener via LLM)
 - → **Ready**: Bot decides not to speak
 
 **LED hint**: Blue breathing (if StateBased), otherwise ambient pattern continues
@@ -108,8 +114,8 @@ Listening → Thinking → Learning → Speaking → Ready
 
 **If bot initiated (Observing)**:
 ```
-Speaking → Ready
-(Bot speaks its observation, then waits for wake word to continue)
+Thinking → Learning → Speaking → Ready
+(Bot generates an opener, speaks it, then returns to Ready and waits for wake word)
 ```
 
 **Sub-state details**:

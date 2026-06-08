@@ -18,6 +18,14 @@ pub enum Event {
     /// Used to trigger presence timeout behaviors
     NoPresenceSince(Duration),
 
+    /// Periodic update reporting continuous desk presence duration
+    ///
+    /// Emitted every 5 minutes while the user is continuously present at their desk.
+    /// Resets when presence ends and restarts when they return.
+    ///
+    /// The value represents the total minutes of uninterrupted presence.
+    DeskPresenceDuration(u32),
+
     // ============================================================================
     // Audio Sensor Events (Microphone)
     // ============================================================================
@@ -98,7 +106,10 @@ pub enum Event {
 
 impl Event {
     pub fn is_pir_event(&self) -> bool {
-        matches!(self, Event::PresenceDetected | Event::NoPresenceSince(_))
+        matches!(
+            self,
+            Event::PresenceDetected | Event::NoPresenceSince(_) | Event::DeskPresenceDuration(_)
+        )
     }
 
     pub fn is_audio_event(&self) -> bool {

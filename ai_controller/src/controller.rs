@@ -57,7 +57,7 @@ use std::collections::HashSet;
 use std::time::{Duration, Instant};
 use tokio::sync::{broadcast, mpsc};
 
-use crate::{LlmService, MemoryService};
+use crate::{observation_mode::ObservationContext, LlmService, MemoryService};
 
 // ============================================================================
 // Startup Tracking
@@ -154,6 +154,9 @@ struct ControllerState {
 
     /// System configuration
     config: SystemConfig,
+
+    /// How long the user has been continuously present (updated from DeskPresenceDuration events)
+    presence_duration_minutes: u32,
 }
 
 impl ControllerState {
@@ -181,6 +184,7 @@ impl ControllerState {
             pending_lcd_command: None,
             startup: StartupTracker::new(),
             config,
+            presence_duration_minutes: 0,
         })
     }
 
@@ -375,6 +379,9 @@ async fn handle_event(
         Event::SpeechComplete => handle_speech_complete(state, cmd_tx).await?,
         Event::PresenceDetected => handle_presence_detected(state, cmd_tx).await?,
         Event::NoPresenceSince(duration) => handle_no_presence(duration, state, cmd_tx).await?,
+        Event::DeskPresenceDuration(minutes) => {
+            handle_desk_presence_duration(minutes, state, cmd_tx).await?
+        }
         Event::AmbientNoiseLevel(level) => handle_ambient_noise(level, state, cmd_tx).await?,
         Event::UserRequestedDND => handle_user_requested_dnd(state, cmd_tx).await?,
         Event::UserRequestedWakeUp => handle_user_requested_wakeup(state, cmd_tx).await?,
@@ -636,11 +643,10 @@ async fn handle_presence_detected(
     if let ConversationState::Silent { manual: false } = state.bot_state.conversation_state {
         info!("Presence detected while in auto Silent - transitioning to Ready");
         state.bot_state.conversation_state = ConversationState::Ready;
+        // Reset presence duration so the bot gives the user a moment to settle
+        // before the PIR sensor triggers an observation
+        state.presence_duration_minutes = 0;
         send_state_commands(cmd_tx, state).await?;
-
-        // TODO Phase 2: Occasionally greet user with a friendly message
-        // Example: "Welcome back!" or "Good to see you again!"
-        // This would emit Event::BotInitiatedGreeting or similar
     }
 
     Ok(())
@@ -654,6 +660,8 @@ async fn handle_no_presence(
 ) -> Result<()> {
     info!("No presence for {:?}", duration);
     state.bot_state.presence_detected = false;
+    // Reset desk presence counter — will restart from zero when user returns
+    state.presence_duration_minutes = 0;
 
     // Per diagram: If in Ready mode and no presence detected, transition to Silent (auto)
     // This conserves power when user is away from desk
@@ -679,6 +687,34 @@ async fn handle_ambient_noise(
     // Phase 2: Could adjust behavior based on noise level
     // - High noise → reduce passive observation
     // - Music detected → enter ambient lighting mode
+    Ok(())
+}
+
+/// Handle periodic desk presence duration update
+///
+/// This event is emitted by the PIR sensor at random intervals while the user
+/// is continuously present. The controller uses this as a trigger to decide
+/// whether to initiate a proactive conversation (Observing state).
+async fn handle_desk_presence_duration(
+    minutes: u32,
+    state: &mut ControllerState,
+    cmd_tx: &mpsc::Sender<Command>,
+) -> Result<()> {
+    debug!("Desk presence duration update: {} minutes", minutes);
+    state.presence_duration_minutes = minutes;
+
+    // Trigger observation logic only once the system is fully loaded and
+    // we are in the Ready state with confirmed presence.
+    // Guard against observations during startup (before all components are ready).
+    if state.startup.all_components_ready
+        && matches!(state.bot_state.conversation_state, ConversationState::Ready)
+        && state.bot_state.presence_detected
+    {
+        trigger_observation(state, cmd_tx).await?;
+    } else if !state.startup.all_components_ready {
+        debug!("Skipping observation — system not fully initialised yet");
+    }
+
     Ok(())
 }
 
@@ -743,6 +779,115 @@ async fn handle_user_requested_wakeup(
         .context("Failed to send UnlockBot command")?;
 
     send_state_commands(cmd_tx, state).await?;
+
+    Ok(())
+}
+
+// ============================================================================
+// Observation Logic
+// ============================================================================
+
+/// Execute a passive observation cycle.
+///
+/// Triggered when the PIR sensor emits a DeskPresenceDuration event and the bot
+/// is in the Ready state with presence detected.
+///
+/// 1. Transitions to `Observing` state (blue breathing LED).
+/// 2. Builds an [`ObservationContext`] from current system state.
+/// 3. Decides probabilistically whether to speak.
+/// 4. If yes: generates a conversation opener via LLM and speaks it.
+/// 5. If no: returns to `Ready` and waits for the next event.
+async fn trigger_observation(
+    state: &mut ControllerState,
+    cmd_tx: &mpsc::Sender<Command>,
+) -> Result<()> {
+    info!("[Observation] Presence check received — entering Observing state");
+
+    // Transition to Observing state
+    state.bot_state.conversation_state = ConversationState::Observing;
+    send_state_commands(cmd_tx, state).await?;
+
+    // Collect context
+    let recent_facts: Vec<String> = state
+        .memory
+        .get_all_facts()
+        .iter()
+        .rev() // most-recent first
+        .take(5)
+        .map(|f| f.text.clone())
+        .collect();
+
+    let ctx = ObservationContext::new(
+        state.presence_duration_minutes,
+        state.last_interaction.elapsed(),
+        recent_facts,
+    );
+
+    // Decide whether to initiate
+    if !ctx.should_initiate(&state.config.behavior.observation_probability) {
+        info!("[Observation] Decision: stay quiet");
+        return_to_ready_state(state, cmd_tx).await?;
+        return Ok(());
+    }
+
+    info!("[Observation] Decision: initiate conversation");
+
+    // Build opener prompt and pass through the normal generation pipeline
+    let prompt = ctx.build_opener_prompt();
+    let history = state.memory.get_context();
+
+    // Transition to Thinking while generating
+    state.bot_state.conversation_state = ConversationState::Active(ActiveSubState::Thinking);
+    send_state_commands(cmd_tx, state).await?;
+
+    let response = match state.llm.generate(&prompt, &history).await {
+        Ok(r) => r,
+        Err(e) => {
+            error!("[Observation] LLM generation failed: {}", e);
+            return_to_ready_state(state, cmd_tx).await?;
+            return Ok(());
+        }
+    };
+
+    info!("[Observation] Opener: '{}'", response);
+
+    // Parse for optional LCD command embedded in response
+    let parsed = parse_llm_response(&response);
+
+    // Brief Learning state to store the exchange
+    state.bot_state.conversation_state = ConversationState::Active(ActiveSubState::Learning);
+    send_state_commands(cmd_tx, state).await?;
+
+    // Record as a bot-initiated exchange so memory is consistent
+    state
+        .memory
+        .add_exchange("[bot-initiated]".to_string(), response.clone());
+
+    // Transition to Speaking
+    state.bot_state.conversation_state = ConversationState::Active(ActiveSubState::Speaking);
+    send_state_commands(cmd_tx, state).await?;
+
+    // Stop microphone so the bot doesn't listen to its own voice
+    cmd_tx
+        .send(Command::StopListening)
+        .await
+        .context("Failed to send StopListening command")?;
+
+    // Queue LCD command (sent on SpeechPlaybackStarted for timing)
+    if let Some(lcd_cmd) = parsed.lcd_command {
+        state.pending_lcd_command = Some(lcd_cmd);
+    }
+
+    // Speak the opener — SpeechComplete will return us to Ready
+    cmd_tx
+        .send(Command::Speak {
+            text: parsed.spoken_text,
+        })
+        .await
+        .context("Failed to send Speak command")?;
+
+    // Mark interaction so the observation probability resets
+    state.mark_interaction();
 
     Ok(())
 }

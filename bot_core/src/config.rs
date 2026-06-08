@@ -264,6 +264,38 @@ pub struct BehaviorConfig {
 
     /// Default Do Not Disturb duration in seconds
     pub do_not_disturb_duration: u64,
+
+    /// Observation probability weighting parameters
+    pub observation_probability: ObservationProbabilityConfig,
+}
+
+/// Observation probability weighting configuration
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ObservationProbabilityConfig {
+    /// Base probability (0.0-1.0)
+    pub base: f32,
+
+    /// Bonus per presence step (minutes per step, max steps, bonus per step)
+    pub presence: ProbabilityStepConfig,
+
+    /// Bonus per interaction silence step (minutes per step, max steps, bonus per step)
+    pub interaction: ProbabilityStepConfig,
+
+    /// Maximum total probability (0.0-1.0)
+    pub ceiling: f32,
+}
+
+/// Configuration for stepped probability bonuses
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProbabilityStepConfig {
+    /// Minutes per step
+    pub minutes_per_step: f32,
+
+    /// Maximum number of steps that contribute
+    pub max_steps: f32,
+
+    /// Probability bonus per step (0.0-1.0)
+    pub bonus_per_step: f32,
 }
 
 impl BehaviorConfig {

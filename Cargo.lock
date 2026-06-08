@@ -37,6 +37,7 @@ dependencies = [
  "log",
  "ndarray",
  "ort",
+ "rand 0.10.1",
  "reqwest",
  "serde",
  "serde_json",

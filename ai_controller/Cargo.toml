@@ -29,6 +29,9 @@ thiserror = { workspace = true }
 # Time utilities for memory timestamps
 chrono = { workspace = true }
 
+# Random number generation (observation probability)
+rand = { workspace = true }
+
 # UUID generation for facts
 uuid = { workspace = true }
 

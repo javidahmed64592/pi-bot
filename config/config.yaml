@@ -119,10 +119,24 @@ memory:
 
 # Bot Behavior
 behavior:
-  passive_observation_interval: [300, 900]  # 5-15 minutes
+  passive_observation_interval: [300, 900]  # seconds for random observation checks
   conversation_timeout: 10  # seconds of silence
-  idle_timeout: 1800  # 30 minutes
-  do_not_disturb_duration: 3600  # 1 hour default
+  idle_timeout: 1800  # seconds before going idle
+  do_not_disturb_duration: 3600  # seconds to stay in DND mode after user leaves
+
+  # Observation probability weighting
+  # Formula: base + (presence_bonus) + (interaction_bonus), capped at ceiling
+  observation_probability:
+    base: 0.20  # base chance
+    presence:
+      minutes_per_step: 30.0  # +bonus every X minutes at desk
+      max_steps: 4.0          # cap at X steps (steps * minutes per step = max time for full bonus)
+      bonus_per_step: 0.10    # +X% per step
+    interaction:
+      minutes_per_step: 15.0  # +bonus every X minutes of silence
+      max_steps: 3.0          # cap at X steps (steps * minutes per step = max time for full bonus)
+      bonus_per_step: 0.10    # +X% per step
+    ceiling: 0.90  # X% maximum total probability
 
 # RGB LED Configuration (StateBased lighting mode)
 # Each state can have a custom pattern and color [R, G, B] (0-255)
