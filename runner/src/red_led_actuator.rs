@@ -19,14 +19,18 @@ use tokio::sync::{broadcast, mpsc};
 /// # Arguments
 /// * `config` - System configuration with GPIO pin mapping
 /// * `command_rx` - Channel to receive commands from controller
+/// * `startup_tx` - Channel to notify runner that this component is ready
 /// * `shutdown_rx` - Shutdown signal receiver
 ///
 /// # Behavior
 /// Listens for SetRedLeds commands and controls both red status LEDs
-/// with synchronized patterns. Exits gracefully on shutdown signal.
+/// with synchronized patterns. Defaults to Breathing on startup to indicate
+/// the system is loading before the controller sends its first command.
+/// Exits gracefully on shutdown signal.
 pub async fn run_red_led_actuator(
     config: &SystemConfig,
     mut command_rx: mpsc::Receiver<Command>,
+    startup_tx: mpsc::Sender<(String, bool)>,
     mut shutdown_rx: broadcast::Receiver<()>,
 ) -> Result<()> {
     log::info!("[Red LED Actuator Task] Starting...");
@@ -37,8 +41,17 @@ pub async fn run_red_led_actuator(
 
     log::info!("[Red LED Actuator Task] Initialized");
 
-    // Current pattern state
-    let mut current_pattern = StatusLedPattern::Off;
+    // Signal runner that this component is ready
+    if let Err(e) = startup_tx.send(("red_led".to_string(), true)).await {
+        log::warn!(
+            "[Red LED Actuator Task] Failed to send startup signal: {}",
+            e
+        );
+    }
+
+    // Default to Breathing so the hardware shows the loading state immediately,
+    // even before the controller finishes initialising and sends its first command.
+    let mut current_pattern = StatusLedPattern::Breathing;
     let mut pattern_frame = 0u32;
 
     // Pattern animation interval (50ms = 20 FPS)

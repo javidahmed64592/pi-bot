@@ -27,6 +27,7 @@ use tokio::sync::{broadcast, mpsc};
 pub async fn run_lcd_actuator(
     config: &SystemConfig,
     mut command_rx: mpsc::Receiver<Command>,
+    startup_tx: mpsc::Sender<(String, bool)>,
     mut shutdown_rx: broadcast::Receiver<()>,
 ) -> Result<()> {
     log::info!("[LCD Actuator Task] Starting...");
@@ -37,6 +38,10 @@ pub async fn run_lcd_actuator(
         Err(e) => {
             log::error!("[LCD Actuator Task] Failed to initialize LCD: {}", e);
             log::warn!("[LCD Actuator Task] Running in degraded mode (LCD unavailable)");
+            // Signal runner even on failure so startup sequencing can proceed
+            if let Err(se) = startup_tx.send(("lcd".to_string(), false)).await {
+                log::warn!("[LCD Actuator Task] Failed to send startup signal: {}", se);
+            }
             // Wait for shutdown signal (non-critical component, allow system to continue)
             let _ = shutdown_rx.recv().await;
             return Ok(());
@@ -47,6 +52,11 @@ pub async fn run_lcd_actuator(
         "[LCD Actuator Task] Initialized (I2C: 0x{:02X})",
         config.gpio.lcd_i2c_address
     );
+
+    // Signal runner that this component is ready
+    if let Err(e) = startup_tx.send(("lcd".to_string(), true)).await {
+        log::warn!("[LCD Actuator Task] Failed to send startup signal: {}", e);
+    }
 
     loop {
         tokio::select! {

@@ -19,6 +19,7 @@ use tokio::sync::{broadcast, mpsc};
 /// # Arguments
 /// * `config` - System configuration with GPIO pin mapping
 /// * `event_tx` - Channel to send events to controller
+/// * `startup_tx` - Channel to notify runner that this component is ready
 /// * `shutdown_rx` - Shutdown signal receiver
 ///
 /// # Behavior
@@ -27,6 +28,7 @@ use tokio::sync::{broadcast, mpsc};
 pub async fn run_pir_sensor(
     config: &SystemConfig,
     event_tx: mpsc::Sender<Event>,
+    startup_tx: mpsc::Sender<(String, bool)>,
     mut shutdown_rx: broadcast::Receiver<()>,
 ) -> Result<()> {
     log::info!("[PIR Sensor Task] Starting...");
@@ -36,6 +38,11 @@ pub async fn run_pir_sensor(
     let mut pir = PirSensorController::new(config.gpio.pir_pin, "PIR Sensor", timeout_duration)?;
 
     log::info!("[PIR Sensor Task] Initialized, polling every 100ms");
+
+    // Signal runner that this component is ready
+    if let Err(e) = startup_tx.send(("pir".to_string(), true)).await {
+        log::warn!("[PIR Sensor Task] Failed to send startup signal: {}", e);
+    }
 
     // Polling interval
     let poll_interval = Duration::from_millis(100);

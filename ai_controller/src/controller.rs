@@ -53,10 +53,71 @@ use bot_core::{
     state::{ActiveSubState, BotState, ConversationState},
 };
 use log::{debug, error, info, warn};
+use std::collections::HashSet;
 use std::time::{Duration, Instant};
 use tokio::sync::{broadcast, mpsc};
 
 use crate::{LlmService, MemoryService};
+
+// ============================================================================
+// Startup Tracking
+// ============================================================================
+
+/// Expected actuator component names (must report ready before sensors are spawned)
+const ACTUATOR_COMPONENTS: &[&str] = &["rgb_led", "green_led", "red_led", "speaker", "lcd"];
+
+/// Expected sensor component names (must all report ready for system to be fully ready)
+const SENSOR_COMPONENTS: &[&str] = &["pir", "audio"];
+
+/// Tracks which components have reported ready during system startup.
+///
+/// The startup sequence has two phases:
+/// 1. Actuator phase: red LEDs breathing (loading), waiting for sensors
+/// 2. Sensor phase: all components ready → green LEDs solid (ready)
+#[derive(Default)]
+struct StartupTracker {
+    /// Names of all components that have sent ComponentReady
+    ready_components: HashSet<String>,
+    /// Whether all components (actuators + sensors) have reported ready
+    all_components_ready: bool,
+}
+
+impl StartupTracker {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    /// Mark a component as ready. Returns true if this was the final component.
+    fn mark_ready(&mut self, component: String) -> bool {
+        self.ready_components.insert(component);
+
+        let all_ready = ACTUATOR_COMPONENTS
+            .iter()
+            .chain(SENSOR_COMPONENTS.iter())
+            .all(|&name| self.ready_components.contains(name));
+
+        if all_ready && !self.all_components_ready {
+            self.all_components_ready = true;
+        }
+
+        self.all_components_ready
+    }
+
+    /// Return names of components still awaited
+    fn pending(&self) -> Vec<&str> {
+        ACTUATOR_COMPONENTS
+            .iter()
+            .chain(SENSOR_COMPONENTS.iter())
+            .filter_map(|&name| {
+                if self.ready_components.contains(name) {
+                    None
+                } else {
+                    Some(name)
+                }
+            })
+            .collect()
+    }
+}
 
 // ============================================================================
 // Controller State
@@ -88,6 +149,9 @@ struct ControllerState {
     /// Pending LCD command to send when speech playback starts
     pending_lcd_command: Option<Command>,
 
+    /// Tracks component readiness during startup
+    startup: StartupTracker,
+
     /// System configuration
     config: SystemConfig,
 }
@@ -115,6 +179,7 @@ impl ControllerState {
             speech_capture_active: false,
             last_presence_time: Instant::now(),
             pending_lcd_command: None,
+            startup: StartupTracker::new(),
             config,
         })
     }
@@ -252,15 +317,17 @@ pub async fn run_controller(
         .await
         .context("Failed to initialize controller state")?;
 
-    // Send initial state commands
-    if let Err(e) = send_initial_commands(&cmd_tx, &state).await {
-        error!("Failed to send initial commands: {}", e);
+    // Send loading state: red LEDs breathing, green LEDs off, RGB off.
+    // Actuators default to this on startup, but we reinforce it here in case
+    // the controller finishes loading before actuators emit ComponentReady.
+    if let Err(e) = send_loading_commands(&cmd_tx).await {
+        error!("Failed to send loading commands: {}", e);
     }
 
     // Create timeout ticker for periodic checks
     let mut timeout_check_interval = tokio::time::interval(Duration::from_secs(1));
 
-    info!("AI controller ready");
+    info!("AI controller ready, waiting for components to report in");
 
     loop {
         tokio::select! {
@@ -306,12 +373,14 @@ async fn handle_event(
         Event::SpeechCaptured(text) => handle_speech_captured(text, state, cmd_tx).await?,
         Event::SpeechPlaybackStarted => handle_speech_playback_started(state, cmd_tx).await?,
         Event::SpeechComplete => handle_speech_complete(state, cmd_tx).await?,
-        Event::SystemReady => handle_system_ready(state, cmd_tx).await?,
         Event::PresenceDetected => handle_presence_detected(state, cmd_tx).await?,
         Event::NoPresenceSince(duration) => handle_no_presence(duration, state, cmd_tx).await?,
         Event::AmbientNoiseLevel(level) => handle_ambient_noise(level, state, cmd_tx).await?,
         Event::UserRequestedDND => handle_user_requested_dnd(state, cmd_tx).await?,
         Event::UserRequestedWakeUp => handle_user_requested_wakeup(state, cmd_tx).await?,
+        Event::ComponentReady { component } => {
+            handle_component_ready(component, state, cmd_tx).await?
+        }
         Event::ComponentHealth { component, healthy } => {
             handle_component_health(component, healthy, state, cmd_tx).await?
         }
@@ -407,17 +476,42 @@ async fn handle_speech_complete(
     Ok(())
 }
 
-/// Handle system ready event (heavy initialization complete)
-async fn handle_system_ready(
+/// Handle a component reporting that it has finished initialisation
+///
+/// The controller tracks two startup phases:
+/// 1. All actuators ready → red LEDs breathing (loading sensors)
+/// 2. All components ready → green LEDs solid (system ready)
+async fn handle_component_ready(
+    component: String,
     state: &mut ControllerState,
     cmd_tx: &mpsc::Sender<Command>,
 ) -> Result<()> {
-    info!("System ready - transitioning from loading to ready state");
+    info!("Component ready: '{}'", component);
 
-    // Ensure we're in Ready state and send state commands
-    // This will transition LEDs from loading (red breathing) to ready (green breathing)
-    state.bot_state.conversation_state = ConversationState::Ready;
-    send_state_commands(cmd_tx, state).await?;
+    let all_ready = state.startup.mark_ready(component.clone());
+
+    let ready_count =
+        ACTUATOR_COMPONENTS.len() + SENSOR_COMPONENTS.len() - state.startup.pending().len();
+    let total = ACTUATOR_COMPONENTS.len() + SENSOR_COMPONENTS.len();
+
+    info!(
+        "Component ready: '{}' ({}/{})",
+        component, ready_count, total
+    );
+
+    if all_ready {
+        info!("All components ready — transitioning to Ready state");
+
+        state.bot_state.conversation_state = ConversationState::Ready;
+
+        // Green LEDs solid = system ready; red LEDs off; RGB LED to Ready pattern
+        send_state_commands(cmd_tx, state).await?;
+
+        info!("System is READY. Say 'hey' to wake Pi Bot.");
+    } else {
+        let pending = state.startup.pending();
+        info!("Still waiting for: {:?}", pending);
+    }
 
     Ok(())
 }
@@ -719,15 +813,28 @@ async fn return_to_ready_state(
 // Command Generation
 // ============================================================================
 
-/// Send initial commands when controller starts
-async fn send_initial_commands(
-    cmd_tx: &mpsc::Sender<Command>,
-    state: &ControllerState,
-) -> Result<()> {
-    info!("Sending initial state commands");
+/// Send loading state commands when controller first starts.
+///
+/// Red LEDs breathing + green off + RGB off signals that the system is
+/// initializing. The actuators also default to this state on startup so
+/// there is no visual gap before the controller's first command arrives.
+async fn send_loading_commands(cmd_tx: &mpsc::Sender<Command>) -> Result<()> {
+    info!("Sending loading state commands (red breathing, green off, RGB off)");
 
-    // Send RGB LED command for ready state
-    send_state_commands(cmd_tx, state).await?;
+    cmd_tx
+        .send(Command::SetRedLeds(StatusLedPattern::Breathing))
+        .await
+        .context("Failed to send red LED loading command")?;
+
+    cmd_tx
+        .send(Command::SetGreenLeds(StatusLedPattern::Off))
+        .await
+        .context("Failed to send green LED off command")?;
+
+    cmd_tx
+        .send(Command::LedOff)
+        .await
+        .context("Failed to send RGB LED off command")?;
 
     Ok(())
 }

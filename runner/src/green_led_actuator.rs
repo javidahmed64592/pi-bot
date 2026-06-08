@@ -19,6 +19,7 @@ use tokio::sync::{broadcast, mpsc};
 /// # Arguments
 /// * `config` - System configuration with GPIO pin mapping
 /// * `command_rx` - Channel to receive commands from controller
+/// * `startup_tx` - Channel to notify runner that this component is ready
 /// * `shutdown_rx` - Shutdown signal receiver
 ///
 /// # Behavior
@@ -27,6 +28,7 @@ use tokio::sync::{broadcast, mpsc};
 pub async fn run_green_led_actuator(
     config: &SystemConfig,
     mut command_rx: mpsc::Receiver<Command>,
+    startup_tx: mpsc::Sender<(String, bool)>,
     mut shutdown_rx: broadcast::Receiver<()>,
 ) -> Result<()> {
     log::info!("[Green LED Actuator Task] Starting...");
@@ -36,6 +38,14 @@ pub async fn run_green_led_actuator(
     let mut green_led_2 = StatusLedController::new(config.gpio.led_pins.green_2, "Green LED 2")?;
 
     log::info!("[Green LED Actuator Task] Initialized");
+
+    // Signal runner that this component is ready
+    if let Err(e) = startup_tx.send(("green_led".to_string(), true)).await {
+        log::warn!(
+            "[Green LED Actuator Task] Failed to send startup signal: {}",
+            e
+        );
+    }
 
     // Current pattern state
     let mut current_pattern = StatusLedPattern::Off;

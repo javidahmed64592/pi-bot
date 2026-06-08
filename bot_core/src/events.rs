@@ -48,14 +48,6 @@ pub enum Event {
     AmbientNoiseLevel(u8),
 
     // ============================================================================
-    // System Events
-    // ============================================================================
-    /// System has completed initialization and is ready for interaction
-    /// Sent by audio sensor when Vosk model finishes loading
-    /// Triggers transition from loading state (red LEDs) to ready state (green LEDs)
-    SystemReady,
-
-    // ============================================================================
     // Camera Sensor Events (Phase 2+)
     // ============================================================================
     /// Camera detected a human face/person
@@ -82,6 +74,8 @@ pub enum Event {
     // ============================================================================
     // User Action Events
     // ============================================================================
+    // TODO: These should be commands sent by the LLM, not events that we define
+
     /// User requested Do Not Disturb (Silent) mode
     /// Bot will enter Silent state, showing red breathing LEDs
     UserRequestedDND,
@@ -93,6 +87,9 @@ pub enum Event {
     // ============================================================================
     // System Events
     // ============================================================================
+    /// Ready status of a component
+    ComponentReady { component: String },
+
     /// Health status of a component changed
     /// component: name of the component ("pir", "camera", "audio", etc.)
     /// healthy: true if component is working, false if failed
@@ -126,7 +123,10 @@ impl Event {
     // }
 
     pub fn is_system_event(&self) -> bool {
-        matches!(self, Event::ComponentHealth { .. })
+        matches!(
+            self,
+            Event::ComponentReady { .. } | Event::ComponentHealth { .. }
+        )
     }
 
     pub fn is_user_action(&self) -> bool {
