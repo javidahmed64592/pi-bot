@@ -1,5 +1,9 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
-name = "pi-bot-utils"
+name = "pi-bot"
 version = "0.1.0"
 description = "Utilities for Pi Bot."
 readme = "README.md"
@@ -25,13 +29,17 @@ dev = [
 
 [project.urls]
 repository = "https://github.com/javidahmed64592/pi-bot"
+documentation = "https://javidahmed64592.github.io/pi-bot"
+
+[project.scripts]
+pi-bot = "pi_bot.main:main"
 
 [tool.hatch.metadata]
 allow-direct-references = true
 
 [tool.hatch.build]
 include = [
-  "pi_bot_utils/**",
+  "pi_bot/**",
 ]
 
 [tool.pytest.ini_options]
@@ -44,7 +52,7 @@ addopts = [
 
 [tool.coverage.run]
 branch = true
-source = ["pi_bot_utils", "tests"]
+source = ["pi_bot", "tests"]
 
 [tool.coverage.report]
 fail_under = 95
@@ -140,17 +148,3 @@ line-ending = "auto"
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
-
-[tool.mypy]
-warn_unused_configs = true
-disallow_incomplete_defs = true
-check_untyped_defs = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_return_any = true
-warn_unreachable = true
-pretty = true
-
-[[tool.mypy.overrides]]
-module = []
-ignore_missing_imports = true
