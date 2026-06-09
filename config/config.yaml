@@ -125,11 +125,11 @@ behaviour:
 #
 # Available patterns:
 #   - off: No light
-#   - solid: Static color (speaking, active)
-#   - breathing: Smooth fade in/out (passive states)
-#   - pulse: Quick pulse animation (thinking, processing)
-#   - gradient: Transition between colors (ambient mode)
-#   - rainbow: Cycle through rainbow (ambient mode)
+#   - solid: Static color
+#   - pulse: Smooth fade in/out
+#   - blink: Quick on/off
+#   - gradient: Transition between colors
+#   - rainbow: Cycle through rainbow
 #
 # Color examples:
 #   Red:    [255, 0, 64]   Yellow: [255, 243, 0]   White:  [255, 255, 255]
@@ -139,19 +139,19 @@ behaviour:
 rgb_led_patterns:
   # Top-level conversation states
   ready:
-    pattern: "breathing"
+    pattern: "pulse"
     interval: 3.0
     colours:
     - {red: 0, green: 255, blue: 65}     # Green
 
   observing:
-    pattern: "breathing"
+    pattern: "pulse"
     interval: 3.0
     colours:
     - {red: 0, green: 191, blue: 255}    # Blue
 
   silent:
-    pattern: "breathing"
+    pattern: "pulse"
     interval: 3.0
     colours:
     - {red: 255, green: 0, blue: 64}     # Red
@@ -159,7 +159,7 @@ rgb_led_patterns:
   # Active conversation sub-states
   active:
     listening:
-      pattern: "breathing"
+      pattern: "pulse"
       interval: 3.0
       colours:
       - {red: 255, green: 154, blue: 0}  # Orange
@@ -177,28 +177,31 @@ rgb_led_patterns:
       - {red: 0, green: 255, blue: 65}   # Green
 
     learning:
-      pattern: "pulse"
+      pattern: "blink"
       interval: 0.5
       colours:
       - {red: 191, green: 0, blue: 255}  # Purple
 
 # Status LED Patterns (single-color LEDs, pattern only)
 status_led_patterns:
-  loading:
-    pattern: "breathing"
-    interval: 3.0
-  ready:
-    pattern: "solid"
+  "off":
+    pattern: "off"
     interval: 0.0
-  observing:
-    pattern: "breathing"
-    interval: 3.0
-  silent:
-    pattern: "breathing"
-    interval: 5.0
-  active:
-    pattern: "solid"
-    interval: 0.0
-  error:
+  "loading":
     pattern: "pulse"
+    interval: 3.0
+  "ready":
+    pattern: "solid"
+    interval: 0.0
+  "observing":
+    pattern: "pulse"
+    interval: 3.0
+  "silent":
+    pattern: "pulse"
+    interval: 5.0
+  "active":
+    pattern: "solid"
+    interval: 0.0
+  "error":
+    pattern: "blink"
     interval: 0.5

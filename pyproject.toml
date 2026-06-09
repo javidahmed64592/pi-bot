@@ -35,6 +35,7 @@ documentation = "https://javidahmed64592.github.io/pi-bot"
 
 [project.scripts]
 pi-bot = "pi_bot.main:main"
+pi-bot-debug = "pi_bot.main:debug"
 
 [tool.hatch.metadata]
 allow-direct-references = true

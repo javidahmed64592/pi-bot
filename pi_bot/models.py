@@ -191,8 +191,8 @@ class LEDPattern(StrEnum):
 
     OFF = "off"
     SOLID = "solid"
-    BREATHING = "breathing"
     PULSE = "pulse"
+    BLINK = "blink"
     GRADIENT = "gradient"
     RAINBOW = "rainbow"
 
@@ -241,6 +241,7 @@ class RGBLEDStateConfig(BaseModel):
 class StatusLEDStateConfig(BaseModel):
     """Configuration for patterns for the status LEDs."""
 
+    off: LEDPatternConfig = Field(..., description="LED pattern configuration for the 'off' state.")
     loading: LEDPatternConfig = Field(..., description="LED pattern configuration for the 'loading' state.")
     ready: LEDPatternConfig = Field(..., description="LED pattern configuration for the 'ready' state.")
     observing: LEDPatternConfig = Field(..., description="LED pattern configuration for the 'observing' state.")
