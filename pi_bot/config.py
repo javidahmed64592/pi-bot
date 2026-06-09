@@ -16,4 +16,4 @@ CONFIG_PATH = CONFIG_DIRECTORY / CONFIG_FILENAME
 
 def load_config() -> BotConfig:
     """Load the bot configuration from the YAML file."""
-    return BotConfig.from_yaml(CONFIG_PATH)
+    return BotConfig.from_yaml(filepath=CONFIG_PATH)
