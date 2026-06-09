@@ -76,7 +76,7 @@ async fn main() -> Result<()> {
     println!();
     println!("Ready for conversation! Type your messages below.");
     println!(
-        "Commands: 'quit'/'exit'/'q' to exit, 'clear' to clear history, 'stats' for memory stats"
+        "Commands: 'quit'/'exit'/'q' to exit, 'clear' to clear history, 'stats' for memory stats, 'facts' to list stored facts"
     );
     println!("─────────────────────────────────────────────────────");
     println!();
@@ -127,14 +127,37 @@ async fn main() -> Result<()> {
             continue;
         }
 
+        if input.to_lowercase() == "facts" {
+            let facts = memory.get_all_facts();
+            if facts.is_empty() {
+                println!("📭 No facts stored in long-term memory yet.");
+            } else {
+                println!("📚 Long-term memory ({} facts):", facts.len());
+                for fact in facts {
+                    println!(
+                        "  [{}] {} (retrieved {} times)",
+                        &fact.id[..8],
+                        fact.text,
+                        fact.relevance_count
+                    );
+                }
+            }
+            println!();
+            continue;
+        }
+
         // Generate response
         print!("Bot: [Thinking...");
         io::stdout().flush()?;
 
         let start = std::time::Instant::now();
 
-        // Get conversation context from memory
-        let context = memory.get_context();
+        // Get conversation context augmented with relevant long-term facts
+        let context = if memory.has_semantic_memory() {
+            memory.get_context_with_facts(input).await
+        } else {
+            memory.get_context()
+        };
 
         match service.generate(input, &context).await {
             Ok(response) => {
@@ -152,6 +175,34 @@ async fn main() -> Result<()> {
 
                 // Add exchange to memory (auto-saves to disk)
                 memory.add_exchange(input, &response);
+
+                // Extract and store facts from the exchange
+                if config.memory.fact_extraction_enabled && memory.has_semantic_memory() {
+                    print!("  [Extracting facts...");
+                    io::stdout().flush()?;
+
+                    let facts = service.extract_facts(input, &response).await;
+
+                    if facts.is_empty() {
+                        println!(" none found]");
+                    } else {
+                        println!(" {} extracted]", facts.len());
+                        for fact_text in &facts {
+                            match memory
+                                .add_fact(
+                                    fact_text.clone(),
+                                    ai_controller::FactSource::Conversation,
+                                    None,
+                                )
+                                .await
+                            {
+                                Ok(_) => println!("  💾 Stored: {}", fact_text),
+                                Err(_) => println!("  ℹ Duplicate: {}", fact_text),
+                            }
+                        }
+                    }
+                    println!();
+                }
             }
             Err(e) => {
                 error!("Failed to generate response: {}", e);

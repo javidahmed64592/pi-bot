@@ -58,6 +58,7 @@ use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
 use std::io::{BufReader, BufWriter};
 use std::path::{Path, PathBuf};
+
 use uuid::Uuid;
 
 use crate::embedding_service::{cosine_similarity, EmbeddingService};
@@ -307,7 +308,7 @@ impl MemoryService {
         };
 
         // Initialize short-term memory with recent exchanges from session
-        let short_term: Vec<Exchange> = current_session
+        let mut short_term: Vec<Exchange> = current_session
             .exchanges
             .iter()
             .rev() // Most recent first
@@ -315,6 +316,21 @@ impl MemoryService {
             .rev() // Restore chronological order
             .cloned()
             .collect();
+
+        // Cross-day continuity: when today's session is brand new, seed short-term
+        // with a handful of exchanges from the most recent previous session so the bot
+        // doesn't lose the thread of yesterday's conversation cold.
+        if current_session.exchanges.is_empty() {
+            if let Some(carry) = Self::load_recent_previous_exchanges(&session_dir, 3) {
+                if !carry.is_empty() {
+                    info!(
+                        "Seeding short-term with {} exchanges from previous session for context continuity",
+                        carry.len()
+                    );
+                    short_term = carry;
+                }
+            }
+        }
 
         // Load or create fact database
         let fact_database = if facts_file_path.exists() {
@@ -813,6 +829,124 @@ impl MemoryService {
     /// Check if semantic memory is enabled
     pub fn has_semantic_memory(&self) -> bool {
         self.embedder.is_some()
+    }
+
+    // ========================================================================
+    // Context Augmentation
+    // ========================================================================
+
+    /// Get conversation context for LLM, augmented with relevant long-term facts.
+    ///
+    /// Performs a semantic search for facts relevant to `query` and, when found,
+    /// prepends them as a system message so the LLM can reference them naturally.
+    ///
+    /// Falls back to plain `get_context()` when semantic memory is unavailable
+    /// or the search yields no results.
+    ///
+    /// # Arguments
+    ///
+    /// * `query` - The user's message (used as the search query for fact retrieval)
+    ///
+    /// # Returns
+    ///
+    /// Ordered `Vec<Message>` ready to pass to `LlmService::generate()`.
+    pub async fn get_context_with_facts(&mut self, query: &str) -> Vec<Message> {
+        let mut messages = self.get_context();
+
+        if !self.has_semantic_memory() {
+            return messages;
+        }
+
+        let top_k = self.config.search.top_k;
+        let min_similarity = self.config.search.min_similarity;
+
+        match self.search_facts(query, top_k, min_similarity).await {
+            Ok(facts) if !facts.is_empty() => {
+                let fact_lines: String = facts
+                    .iter()
+                    .map(|(f, score)| format!("- {} [confidence: {:.0}%]", f.text, score * 100.0))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+
+                let fact_message = Message::system(format!(
+                    "Relevant facts about the user retrieved from long-term memory:\n{}",
+                    fact_lines
+                ));
+
+                // Insert before the conversation history so the model sees facts as context
+                messages.insert(0, fact_message);
+                debug!("Injected {} relevant facts into LLM context", facts.len());
+            }
+            Ok(_) => {
+                debug!("No relevant facts found for query");
+            }
+            Err(e) => {
+                warn!("Fact retrieval failed, continuing without facts: {}", e);
+            }
+        }
+
+        messages
+    }
+
+    // ========================================================================
+    // Cross-Day Context
+    // ========================================================================
+
+    /// Load the most recent N exchanges from the latest previous session.
+    ///
+    /// Used on startup to seed short-term memory when today's session is empty,
+    /// giving the bot conversational continuity from yesterday.
+    ///
+    /// # Arguments
+    ///
+    /// * `session_dir` - Directory containing daily session files
+    /// * `count` - Maximum number of exchanges to carry forward
+    ///
+    /// # Returns
+    ///
+    /// `Some(exchanges)` if a previous session exists and has content, else `None`
+    fn load_recent_previous_exchanges(session_dir: &Path, count: usize) -> Option<Vec<Exchange>> {
+        let today = Local::now().format("%Y-%m-%d").to_string();
+
+        // Collect all session dates that are not today
+        let mut dates: Vec<String> = fs::read_dir(session_dir)
+            .ok()?
+            .filter_map(|e| e.ok())
+            .filter_map(|e| {
+                let path = e.path();
+                if path.extension().and_then(|s| s.to_str()) != Some("json") {
+                    return None;
+                }
+                path.file_stem()
+                    .and_then(|s| s.to_str())
+                    .filter(|stem| {
+                        *stem != today && NaiveDate::parse_from_str(stem, "%Y-%m-%d").is_ok()
+                    })
+                    .map(|s| s.to_string())
+            })
+            .collect();
+
+        dates.sort();
+
+        let most_recent = dates.last()?;
+        let prev_file = session_dir.join(format!("{}.json", most_recent));
+
+        let prev_session = Self::load_session_from_file(&prev_file).ok()?;
+
+        if prev_session.exchanges.is_empty() {
+            return None;
+        }
+
+        let carry: Vec<Exchange> = prev_session
+            .exchanges
+            .iter()
+            .rev()
+            .take(count)
+            .rev()
+            .cloned()
+            .collect();
+
+        Some(carry)
     }
 }
 

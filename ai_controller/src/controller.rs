@@ -57,7 +57,10 @@ use std::collections::HashSet;
 use std::time::{Duration, Instant};
 use tokio::sync::{broadcast, mpsc};
 
-use crate::{observation_mode::ObservationContext, LlmService, MemoryService};
+use crate::{
+    llm_service::Message, memory_service::FactSource, observation_mode::ObservationContext,
+    LlmService, MemoryService,
+};
 
 // ============================================================================
 // Startup Tracking
@@ -149,6 +152,13 @@ struct ControllerState {
     /// Pending LCD command to send when speech playback starts
     pending_lcd_command: Option<Command>,
 
+    /// Pending fact extraction: (user_msg, assistant_response) from the last exchange.
+    ///
+    /// Set after each conversation turn and processed in `handle_speech_complete`,
+    /// so extraction runs while the bot is transitioning back to Ready — never
+    /// blocking the user from getting a response.
+    pending_extraction: Option<(String, String)>,
+
     /// Tracks component readiness during startup
     startup: StartupTracker,
 
@@ -182,6 +192,7 @@ impl ControllerState {
             speech_capture_active: false,
             last_presence_time: Instant::now(),
             pending_lcd_command: None,
+            pending_extraction: None,
             startup: StartupTracker::new(),
             config,
             presence_duration_minutes: 0,
@@ -284,6 +295,136 @@ fn parse_llm_response(response: &str) -> ParsedResponse {
     ParsedResponse {
         spoken_text,
         lcd_command,
+    }
+}
+
+// ============================================================================
+// Memory Command Handling
+// ============================================================================
+
+/// Explicit memory commands parsed from user speech before the LLM sees them.
+///
+/// These are handled transparently: the fact database is updated first, then
+/// the user's original message is passed to the LLM so it can respond naturally
+/// (e.g. "I'll remember that!" or "I've forgotten that.").
+enum MemoryCommandType {
+    /// User asked the bot to remember a specific fact
+    StoreFact(String),
+    /// User asked the bot to forget something
+    ForgetFact(String),
+}
+
+/// Detect whether the user's message is an explicit memory command using the LLM.
+///
+/// Uses a fast, low-temperature LLM call to detect natural language intent.
+/// Catches variations like "remember that", "don't forget", "keep in mind",
+/// "you should know", etc. Returns None silently on any error.
+async fn detect_memory_command(text: &str, llm: &LlmService) -> Option<MemoryCommandType> {
+    // Skip very short messages
+    if text.split_whitespace().count() < 3 {
+        return None;
+    }
+
+    let prompt = format!(
+        "Analyze this user message and detect if they are explicitly asking you to remember or forget something.\n\n\
+         User message: \"{}\"\n\n\
+         Respond with ONLY a JSON object (no markdown):  \n\
+         {{\"intent\": \"remember\" | \"forget\" | \"none\", \"content\": \"extracted fact or query\"}}\n\n\
+         Examples:\n\
+         - \"Can you remember that I like coffee?\" → {{\"intent\": \"remember\", \"content\": \"I like coffee\"}}\n\
+         - \"Don't forget I work from home\" → {{\"intent\": \"remember\", \"content\": \"I work from home\"}}\n\
+         - \"Forget that I like tea\" → {{\"intent\": \"forget\", \"content\": \"I like tea\"}}\n\
+         - \"What's the weather like?\" → {{\"intent\": \"none\", \"content\": \"\"}}\n\n\
+         JSON response:",
+        text
+    );
+
+    let messages = vec![
+        Message::system(
+            "You detect memory intent from user messages. \
+             Respond ONLY with JSON, no markdown formatting.",
+        ),
+        Message::user(&prompt),
+    ];
+
+    let response = llm.generate_with_options(&messages, 0.0, 256).await.ok()?;
+
+    // Parse JSON response
+    #[derive(serde::Deserialize)]
+    struct IntentResponse {
+        intent: String,
+        content: String,
+    }
+
+    let json_str = response
+        .trim()
+        .trim_start_matches("```json")
+        .trim_start_matches("```")
+        .trim_end_matches("```")
+        .trim();
+
+    let intent: IntentResponse = serde_json::from_str(json_str).ok()?;
+
+    match intent.intent.to_lowercase().as_str() {
+        "remember" if !intent.content.is_empty() => {
+            debug!("Detected memory store intent: '{}'", intent.content);
+            Some(MemoryCommandType::StoreFact(intent.content))
+        }
+        "forget" if !intent.content.is_empty() => {
+            debug!("Detected memory forget intent: '{}'", intent.content);
+            Some(MemoryCommandType::ForgetFact(intent.content))
+        }
+        _ => None,
+    }
+}
+
+/// Apply any explicit memory command BEFORE sending the message to the LLM.
+///
+/// This updates the fact database silently so the LLM can then respond
+/// naturally to the user's request ("I'll remember that!").
+async fn preprocess_memory_commands(text: &str, state: &mut ControllerState) {
+    let Some(cmd) = detect_memory_command(text, &state.llm).await else {
+        return;
+    };
+
+    match cmd {
+        MemoryCommandType::StoreFact(fact_text) => {
+            info!("Storing user-told fact: '{}'", fact_text);
+            match state
+                .memory
+                .add_fact(fact_text.clone(), FactSource::UserTold, None)
+                .await
+            {
+                Ok(_) => info!("Fact stored successfully"),
+                Err(e) => warn!("Failed to store fact (may be duplicate): {}", e),
+            }
+        }
+
+        MemoryCommandType::ForgetFact(query) => {
+            info!("User wants to forget: '{}'", query);
+            if state.memory.has_semantic_memory() {
+                match state.memory.search_facts(&query, 1, 0.65).await {
+                    Ok(results) if !results.is_empty() => {
+                        let (fact, score) = &results[0];
+                        info!(
+                            "Found fact to forget (similarity={:.2}): '{}'",
+                            score, fact.text
+                        );
+                        let fact_id = fact.id.clone();
+                        if let Err(e) = state.memory.remove_fact(&fact_id) {
+                            warn!("Failed to remove fact: {}", e);
+                        } else {
+                            info!("Fact removed from long-term memory");
+                        }
+                    }
+                    _ => {
+                        info!("No matching fact found to forget");
+                    }
+                }
+            } else {
+                warn!("Semantic memory not available — cannot search for fact to forget");
+            }
+        }
     }
 }
 
@@ -467,19 +608,51 @@ async fn handle_speech_complete(
     info!("Speech playback complete");
 
     // Only transition if we're actually in Speaking state
-    if matches!(
+    if !matches!(
         state.bot_state.conversation_state,
         ConversationState::Active(ActiveSubState::Speaking)
     ) {
-        // Now it's safe to return to ready state
-        return_to_ready_state(state, cmd_tx).await?;
-    } else {
         debug!(
             "Received SpeechComplete but not in Speaking state (current: {:?})",
             state.bot_state.conversation_state
         );
+        return Ok(());
     }
 
+    // Run pending fact extraction before returning to Ready.
+    // We briefly show the Learning LED to give visual feedback during extraction.
+    // This happens after the bot finishes speaking so the user never waits for it.
+    if let Some((user_msg, assistant_msg)) = state.pending_extraction.take() {
+        debug!("Processing pending fact extraction");
+
+        // Visual cue: Learning state during extraction
+        state.bot_state.conversation_state = ConversationState::Active(ActiveSubState::Learning);
+        send_state_commands(cmd_tx, state).await?;
+
+        let extracted_facts = state.llm.extract_facts(&user_msg, &assistant_msg).await;
+
+        if extracted_facts.is_empty() {
+            debug!("No facts extracted from exchange");
+        } else {
+            info!(
+                "Extracted {} fact(s) from exchange — storing in long-term memory",
+                extracted_facts.len()
+            );
+            for fact_text in extracted_facts {
+                match state
+                    .memory
+                    .add_fact(fact_text.clone(), FactSource::Conversation, None)
+                    .await
+                {
+                    Ok(fact) => debug!("Stored fact [{}]: '{}'", &fact.id[..8], fact.text),
+                    Err(e) => debug!("Fact skipped (duplicate or error): {}", e),
+                }
+            }
+        }
+    }
+
+    // Now return to ready state
+    return_to_ready_state(state, cmd_tx).await?;
     Ok(())
 }
 
@@ -542,6 +715,11 @@ async fn handle_speech_captured(
     state.awaiting_speech = false;
     state.speech_capture_active = false; // Speech capture complete
 
+    // Pre-process explicit memory commands (remember / forget) so the fact
+    // database is updated before the LLM sees the message. The LLM then
+    // responds naturally to the original phrasing.
+    preprocess_memory_commands(&text, state).await;
+
     // Transition to thinking state
     state.bot_state.conversation_state = ConversationState::Active(ActiveSubState::Thinking);
     send_state_commands(cmd_tx, state).await?;
@@ -552,8 +730,15 @@ async fn handle_speech_captured(
         .await
         .context("Failed to send StopListening command")?;
 
-    // Get conversation context from memory
-    let history = state.memory.get_context();
+    // Build conversation context.
+    // When semantic memory is enabled, augment with relevant long-term facts
+    // so the LLM can reference what it knows about the user.
+    let history =
+        if state.memory.has_semantic_memory() && state.config.memory.fact_extraction_enabled {
+            state.memory.get_context_with_facts(&text).await
+        } else {
+            state.memory.get_context()
+        };
 
     // Query LLM
     info!("Querying LLM...");
@@ -597,7 +782,14 @@ async fn handle_speech_captured(
     send_state_commands(cmd_tx, state).await?;
 
     // Store exchange in memory (store original response with commands for context)
-    state.memory.add_exchange(text, response.clone());
+    state.memory.add_exchange(text.clone(), response.clone());
+
+    // Queue fact extraction to run AFTER speech completes so it never adds
+    // latency to the user experience. Only queued when extraction is enabled.
+    if state.config.memory.fact_extraction_enabled && state.memory.has_semantic_memory() {
+        state.pending_extraction = Some((text, response.clone()));
+        debug!("Queued fact extraction for post-speech processing");
+    }
 
     // Transition to speaking state
     state.bot_state.conversation_state = ConversationState::Active(ActiveSubState::Speaking);
@@ -807,15 +999,36 @@ async fn trigger_observation(
     state.bot_state.conversation_state = ConversationState::Observing;
     send_state_commands(cmd_tx, state).await?;
 
-    // Collect context
-    let recent_facts: Vec<String> = state
-        .memory
-        .get_all_facts()
-        .iter()
-        .rev() // most-recent first
-        .take(5)
-        .map(|f| f.text.clone())
-        .collect();
+    // Collect context — prefer semantically relevant facts when available
+    let recent_facts: Vec<String> = if state.memory.has_semantic_memory() {
+        // Use a general "user context" query to surface diverse relevant facts
+        let observation_query = "user preferences habits work activities interests";
+        match state.memory.search_facts(observation_query, 5, 0.35).await {
+            Ok(results) if !results.is_empty() => {
+                results.into_iter().map(|(f, _)| f.text).collect()
+            }
+            _ => {
+                // Fall back to most recent facts
+                state
+                    .memory
+                    .get_all_facts()
+                    .iter()
+                    .rev()
+                    .take(5)
+                    .map(|f| f.text.clone())
+                    .collect()
+            }
+        }
+    } else {
+        state
+            .memory
+            .get_all_facts()
+            .iter()
+            .rev()
+            .take(5)
+            .map(|f| f.text.clone())
+            .collect()
+    };
 
     let ctx = ObservationContext::new(
         state.presence_duration_minutes,

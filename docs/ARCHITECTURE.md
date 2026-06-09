@@ -511,52 +511,175 @@ See the **Memory System** section below for full details.
 
 ### Memory System
 
-The memory system uses a two-tier architecture:
+Pi Bot uses a three-tier memory architecture that provides both immediate
+conversational context and persistent long-term recall across sessions.
 
 ```
-┌─────────────────────────────────────────────────┐
-│                  MemoryService                   │
-├─────────────────────────────────────────────────┤
-│  Short-Term (RAM)          Long-Term (disk)     │
-│  ┌──────────────┐          ┌──────────────┐    │
-│  │ Last N       │ extract  │ Semantic     │    │
-│  │ exchanges    │ ──────►  │ facts        │    │
-│  │              │  (LLM)   │ (embeddings) │    │
-│  └──────────────┘          └──────────────┘    │
-│         │                          │            │
-│         ▼                          ▼            │
-│   Session files              facts.json         │
-│   (YYYY-MM-DD.json)          + vectors          │
-└─────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                         MemoryService                            │
+├──────────────────────────────────────────────────────────────────┤
+│  Tier 1: Short-Term          Tier 2: Session       Tier 3: Facts │
+│  (RAM, ephemeral)            (disk, daily)         (disk, durable)│
+│  ┌───────────────┐           ┌─────────────┐       ┌──────────┐  │
+│  │ Last N        │ persist → │ YYYY-MM-DD  │       │facts.json│  │
+│  │ exchanges     │           │ .json       │       │+ vectors │  │
+│  │ (configurable)│           │             │       │          │  │
+│  └───────────────┘           └─────────────┘       └──────────┘  │
+│         │                           │                    ▲        │
+│         │ on startup:               │ cross-day seed     │        │
+│         │ load recent←──────────────┘                   │extract │
+│         │ from prev session                              │(LLM)   │
+│         │                                               │        │
+│         └─────── semantic search ────────────────────────        │
+│                   (before LLM call)                              │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
-**Embedding model**: `all-MiniLM-L6-v2` (ONNX, 80 MB, 384-dim vectors)
-stored at `models/embeddings/all-MiniLM-L6-v2.onnx`.
+#### Tier 1 — Short-Term (RAM)
 
-**Semantic search**: cosine similarity over all stored fact embeddings.
-Top-K relevant facts (K=5, min similarity=0.7) are injected into the
-LLM system prompt for each conversation turn.
+Holds the last `max_short_term` exchanges (default: 10) in memory as a
+sliding window. Passed directly to the LLM as conversation history on each
+turn. Cleared on restart; session files persist it across restarts.
 
-**Fact extraction**: after each exchange, the LLM extracts new atomic facts
-(e.g. "User prefers tea in the morning") and stores them with embeddings.
+**Cross-day continuity**: when the bot starts a brand-new session (no
+exchanges yet today), it seeds short-term memory with the last 3 exchanges
+from the most recent previous session, so conversations don't feel cold.
+
+#### Tier 2 — Session Storage (disk)
+
+One JSON file per calendar day at `data/sessions/YYYY-MM-DD.json`.
+All exchanges are appended after every turn, auto-saving the full
+transcript. Older sessions are never deleted automatically.
+
+#### Tier 3 — Long-Term Semantic Memory (disk)
+
+Stores durable *facts* extracted from conversations as structured records
+with dense vector embeddings, enabling semantic (meaning-based) search.
+
+**Embedding model**: `all-MiniLM-L6-v2` (ONNX, 80 MB, 384-dimensional vectors)
+located at `models/embeddings/all-MiniLM-L6-v2.onnx`.
 
 **Fact schema**:
 ```rust
 pub struct Fact {
     pub id: String,
-    pub text: String,
-    pub embedding: Vec<f32>,        // 384-dim vector
+    pub text: String,              // e.g. "User prefers tea in the morning"
+    pub embedding: Vec<f32>,       // 384-dim normalised vector
     pub timestamp: DateTime<Utc>,
-    pub source: FactSource,         // UserTold | Conversation | Observation
+    pub source: FactSource,        // UserTold | Conversation | Observation
     pub category: Option<String>,
-    pub relevance_count: u32,
+    pub relevance_count: u32,      // how often retrieved (for future ranking)
     pub confidence: f32,
 }
 ```
 
-**Storage**: JSON file at `data/memory/facts.json` (migrate to SQLite if
-facts exceed ~500).  Session transcripts stored at
-`data/memory/sessions/YYYY-MM-DD.json`.
+**Storage**: `data/memory/facts.json` (plain JSON, no dependency on SQLite).
+
+#### Memory Retrieval (before each LLM call)
+
+```
+User says: "What should I have for lunch?"
+                    │
+                    ▼
+       EmbeddingService.embed(query)      ← ~50ms
+                    │
+                    ▼
+  cosine_similarity(query_vec, all_facts)
+                    │
+                    ▼
+  top-K facts with similarity ≥ threshold  (default: K=5, threshold=0.7)
+                    │
+                    ▼
+  Injected as system message:
+  "Relevant facts about the user:
+   - User dislikes spicy food [confidence: 82%]
+   - User usually eats lunch at 1pm [confidence: 74%]"
+                    │
+                    ▼
+            LLM generates response
+```
+
+#### Fact Extraction (after each exchange)
+
+Runs *after* the bot finishes speaking to avoid adding latency. Uses a
+deterministic, low-temperature LLM call with explicit rules to preserve
+the user's exact wording while converting first-person statements to
+third-person facts.
+
+```
+Bot finishes speaking (SpeechComplete event)
+                    │
+         pending_extraction set? yes
+                    │
+                    ▼
+         LED → Learning (purple pulse)
+                    │
+                    ▼
+  LLM: extract_facts(user_msg, assistant_response)
+    temperature: 0.0 (deterministic)
+    context: 512 tokens
+
+    Extraction rules enforced by prompt:
+    1. Convert "I [verb] X" → "User [verb] X"
+    2. Preserve X EXACTLY as stated (no interpretation/generalization)
+    3. Do NOT add assumptions or rephrase content
+    4. Extract only personal facts (preferences, habits, work, relationships)
+
+    Examples shown in prompt:
+    ✓ "I like coffee" → ["User likes coffee"]
+    ✗ "I like spicy ramen" → ["User is spicy"]  # WRONG (misinterpreted)
+    ✗ "I like craft beer" → ["User likes beer"]  # GENERALIZED (lost detail)
+    ✓ "I like craft beer" → ["User likes craft beer"]  # CORRECT (exact)
+                    │
+                    ▼
+  For each extracted fact:
+    embed → cosine check (similarity ≥ 0.9 → deduplicate)
+    store in fact_database → save facts.json
+                    │
+                    ▼
+         LED → Ready (green breathing)
+```
+
+**Why this approach?**
+Previous versions used a simple extraction prompt which caused the LLM to
+interpret and generalize user statements. The new prompt includes explicit
+rules and contrasting examples to enforce literal preservation.
+
+#### Explicit Memory Commands (AI-Detected)
+
+Users can manage the fact database via natural language, detected using a
+fast LLM call (temperature 0.0, 256 tokens) before the main conversation.
+
+```
+User says: "Can you remember that I like coffee?"
+                    │
+                    ▼
+  detect_memory_command(text, llm) → async LLM call:
+    - Analyzes user intent
+    - Returns JSON: {"intent": "remember"|"forget"|"none", "content": "fact"}
+    - Catches natural variations:
+        * "remember that..."
+        * "don't forget..."
+        * "keep in mind that..."
+        * "you should know..."
+                    │
+                    ▼
+  If intent == "remember":
+    store fact immediately (before main LLM call)
+    → LLM responds naturally: "I'll remember that!"
+
+  If intent == "forget":
+    semantic search → remove closest matching fact
+    → LLM responds: "I've forgotten that."
+```
+
+**Why AI detection?**
+Hardcoded phrase matching (e.g., `if text.starts_with("remember that")`)
+is rigid and misses natural variations. The AI-based approach:
+- Understands implicit phrasing ("don't forget I'm vegan")
+- Works with any natural language variant
+- Runs before the main LLM call so facts are stored transparently
+- Fails silently on errors (never blocks conversation flow)
 
 ---
 
