@@ -348,10 +348,10 @@ impl LlmService {
         let prompt = format!(
             "Extract ATOMIC personal facts about the user from their message.\n\n\
              CRITICAL RULES:\n\
-             1. Convert \"I [verb] X\" to \"User [verb] X\" — preserve X EXACTLY as stated\n\
-             2. Do NOT interpret, generalize, or rephrase what X is\n\
-             3. Do NOT add your own understanding or assumptions\n\
-             4. Preserve the user's exact wording literally — never censor or modify\n\
+             1. Convert \"I [verb] X\" to \"User [verb] X\"\n\
+             2. Do NOT generalize X\n\
+             3. Do NOT add your own assumptions\n\
+             4. Preserve the user's wording — never censor\n\
              5. Extract only facts about the user (preferences, habits, work, relationships)\n\
              6. Return [] if no personal facts found\n\n\
              GOOD examples:\n\
