@@ -49,18 +49,8 @@ async fn main() -> anyhow::Result<()> {
     info!("─────────────────────────");
 
     let mut embedder = EmbeddingService::new(
-        &config
-            .memory
-            .embeddings
-            .as_ref()
-            .unwrap()
-            .model_path,
-        &config
-            .memory
-            .embeddings
-            .as_ref()
-            .unwrap()
-            .tokenizer_path,
+        &config.memory.embeddings.as_ref().unwrap().model_path,
+        &config.memory.embeddings.as_ref().unwrap().tokenizer_path,
     )?;
 
     info!("✓ Embedding service initialized");
@@ -109,10 +99,16 @@ async fn main() -> anyhow::Result<()> {
     info!("\nAdding facts...");
 
     let facts = vec![
-        ("User's favorite programming language is Rust", FactSource::UserTold),
+        (
+            "User's favorite programming language is Rust",
+            FactSource::UserTold,
+        ),
         ("User likes coffee", FactSource::Conversation),
         ("User prefers tea in the morning", FactSource::Conversation),
-        ("User's desk temperature is usually 22°C", FactSource::Environmental),
+        (
+            "User's desk temperature is usually 22°C",
+            FactSource::Environmental,
+        ),
         ("User works on AI projects", FactSource::Observation),
     ];
 
@@ -138,9 +134,7 @@ async fn main() -> anyhow::Result<()> {
     for query in queries {
         info!("\nQuery: '{}'", query);
 
-        let results = memory
-            .search_facts(query, 3, 0.5)
-            .await?;
+        let results = memory.search_facts(query, 3, 0.5).await?;
 
         if results.is_empty() {
             info!("  No relevant facts found");

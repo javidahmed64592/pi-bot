@@ -69,7 +69,10 @@ pub async fn run_audio_sensor(
             Err(e) => {
                 log::error!("[Audio Sensor Task] Failed to initialize: {}", e);
                 // Signal failure so runner can proceed (degraded mode)
-                if startup_tx.blocking_send(("audio".to_string(), false)).is_err() {
+                if startup_tx
+                    .blocking_send(("audio".to_string(), false))
+                    .is_err()
+                {
                     log::error!("[Audio Sensor Task] Failed to send startup failure signal");
                 }
                 return;
@@ -79,7 +82,10 @@ pub async fn run_audio_sensor(
         // Start listening for wake word
         if let Err(e) = audio.start() {
             log::error!("[Audio Sensor Task] Failed to start: {}", e);
-            if startup_tx.blocking_send(("audio".to_string(), false)).is_err() {
+            if startup_tx
+                .blocking_send(("audio".to_string(), false))
+                .is_err()
+            {
                 log::error!("[Audio Sensor Task] Failed to send startup failure signal");
             }
             return;
@@ -93,7 +99,10 @@ pub async fn run_audio_sensor(
         // Signal runner that Vosk has finished loading and the sensor is ready.
         // The runner forwards this as Event::ComponentReady { component: "audio" }
         // to the controller, which transitions the LEDs from loading to ready.
-        if startup_tx.blocking_send(("audio".to_string(), true)).is_err() {
+        if startup_tx
+            .blocking_send(("audio".to_string(), true))
+            .is_err()
+        {
             log::error!("[Audio Sensor Task] Failed to send startup signal");
         } else {
             log::info!("[Audio Sensor Task] Vosk model loaded — audio sensor ready");

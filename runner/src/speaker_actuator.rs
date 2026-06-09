@@ -49,7 +49,10 @@ pub async fn run_speaker_actuator(
 
     // Signal runner that this component is ready
     if let Err(e) = startup_tx.send(("speaker".to_string(), true)).await {
-        log::warn!("[Speaker Actuator Task] Failed to send startup signal: {}", e);
+        log::warn!(
+            "[Speaker Actuator Task] Failed to send startup signal: {}",
+            e
+        );
     }
 
     loop {

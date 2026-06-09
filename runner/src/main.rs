@@ -83,8 +83,7 @@ async fn main() -> Result<()> {
     let (lcd_tx, lcd_rx) = mpsc::channel::<bot_core::Command>(32);
 
     // Audio sensor command channel: Command Distributor → Audio Sensor
-    let (audio_cmd_tx, audio_cmd_rx) =
-        mpsc::channel::<audio_sensor::AudioSensorCommand>(32);
+    let (audio_cmd_tx, audio_cmd_rx) = mpsc::channel::<audio_sensor::AudioSensorCommand>(32);
 
     // Shutdown channel (broadcast to all tasks)
     let (shutdown_tx, _) = broadcast::channel::<()>(16);
@@ -171,9 +170,13 @@ async fn main() -> Result<()> {
         let shutdown_rx = shutdown_tx.subscribe();
         let startup = startup_tx.clone();
         tokio::spawn(async move {
-            if let Err(e) =
-                green_led_actuator::run_green_led_actuator(&config, green_led_rx, startup, shutdown_rx)
-                    .await
+            if let Err(e) = green_led_actuator::run_green_led_actuator(
+                &config,
+                green_led_rx,
+                startup,
+                shutdown_rx,
+            )
+            .await
             {
                 log::error!("Green LED actuator task failed: {}", e);
             }
@@ -227,7 +230,10 @@ async fn main() -> Result<()> {
         })
     };
 
-    log::info!("Actuator tasks spawned, waiting for {} components to report ready...", ACTUATOR_COUNT);
+    log::info!(
+        "Actuator tasks spawned, waiting for {} components to report ready...",
+        ACTUATOR_COUNT
+    );
 
     // ========================================================================
     // 5. Wait for Actuators → Forward ComponentReady Events
@@ -242,9 +248,19 @@ async fn main() -> Result<()> {
         match startup_rx.recv().await {
             Some((name, healthy)) => {
                 if healthy {
-                    log::info!("Actuator ready: '{}' ({}/{})", name, actuators_ready + 1, ACTUATOR_COUNT);
+                    log::info!(
+                        "Actuator ready: '{}' ({}/{})",
+                        name,
+                        actuators_ready + 1,
+                        ACTUATOR_COUNT
+                    );
                 } else {
-                    log::warn!("Actuator '{}' initialized in degraded mode ({}/{})", name, actuators_ready + 1, ACTUATOR_COUNT);
+                    log::warn!(
+                        "Actuator '{}' initialized in degraded mode ({}/{})",
+                        name,
+                        actuators_ready + 1,
+                        ACTUATOR_COUNT
+                    );
                 }
                 // Forward to controller — it decides what to do with unhealthy components
                 if let Err(e) = event_tx
@@ -256,7 +272,11 @@ async fn main() -> Result<()> {
                 actuators_ready += 1;
             }
             None => {
-                log::error!("Startup channel closed unexpectedly after {}/{} actuators", actuators_ready, ACTUATOR_COUNT);
+                log::error!(
+                    "Startup channel closed unexpectedly after {}/{} actuators",
+                    actuators_ready,
+                    ACTUATOR_COUNT
+                );
                 break;
             }
         }
@@ -306,7 +326,10 @@ async fn main() -> Result<()> {
         })
     };
 
-    log::info!("Sensor tasks spawned, waiting for {} sensors to report ready (Vosk loading...)...", SENSOR_COUNT);
+    log::info!(
+        "Sensor tasks spawned, waiting for {} sensors to report ready (Vosk loading...)...",
+        SENSOR_COUNT
+    );
 
     // ========================================================================
     // 7. Wait for Sensors → Forward ComponentReady Events
@@ -321,9 +344,19 @@ async fn main() -> Result<()> {
         match startup_rx.recv().await {
             Some((name, healthy)) => {
                 if healthy {
-                    log::info!("Sensor ready: '{}' ({}/{})", name, sensors_ready + 1, SENSOR_COUNT);
+                    log::info!(
+                        "Sensor ready: '{}' ({}/{})",
+                        name,
+                        sensors_ready + 1,
+                        SENSOR_COUNT
+                    );
                 } else {
-                    log::warn!("Sensor '{}' initialized in degraded mode ({}/{})", name, sensors_ready + 1, SENSOR_COUNT);
+                    log::warn!(
+                        "Sensor '{}' initialized in degraded mode ({}/{})",
+                        name,
+                        sensors_ready + 1,
+                        SENSOR_COUNT
+                    );
                 }
                 if let Err(e) = event_tx
                     .send(Event::ComponentReady { component: name })
@@ -334,7 +367,11 @@ async fn main() -> Result<()> {
                 sensors_ready += 1;
             }
             None => {
-                log::error!("Startup channel closed unexpectedly after {}/{} sensors", sensors_ready, SENSOR_COUNT);
+                log::error!(
+                    "Startup channel closed unexpectedly after {}/{} sensors",
+                    sensors_ready,
+                    SENSOR_COUNT
+                );
                 break;
             }
         }
