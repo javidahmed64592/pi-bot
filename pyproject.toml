@@ -18,6 +18,8 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
 ]
 dependencies = [
+    "gpiozero>=2.0.1",
+    "lgpio>=0.2.2.0",
     "piper-tts>=1.4.2",
     "template-python @ git+https://github.com/javidahmed64592/template-python.git",
 ]
