@@ -53,10 +53,74 @@ use bot_core::{
     state::{ActiveSubState, BotState, ConversationState},
 };
 use log::{debug, error, info, warn};
+use std::collections::HashSet;
 use std::time::{Duration, Instant};
 use tokio::sync::{broadcast, mpsc};
 
-use crate::{LlmService, MemoryService};
+use crate::{
+    llm_service::Message, memory_service::FactSource, observation_mode::ObservationContext,
+    LlmService, MemoryService,
+};
+
+// ============================================================================
+// Startup Tracking
+// ============================================================================
+
+/// Expected actuator component names (must report ready before sensors are spawned)
+const ACTUATOR_COMPONENTS: &[&str] = &["rgb_led", "green_led", "red_led", "speaker", "lcd"];
+
+/// Expected sensor component names (must all report ready for system to be fully ready)
+const SENSOR_COMPONENTS: &[&str] = &["pir", "audio"];
+
+/// Tracks which components have reported ready during system startup.
+///
+/// The startup sequence has two phases:
+/// 1. Actuator phase: red LEDs breathing (loading), waiting for sensors
+/// 2. Sensor phase: all components ready → green LEDs solid (ready)
+#[derive(Default)]
+struct StartupTracker {
+    /// Names of all components that have sent ComponentReady
+    ready_components: HashSet<String>,
+    /// Whether all components (actuators + sensors) have reported ready
+    all_components_ready: bool,
+}
+
+impl StartupTracker {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    /// Mark a component as ready. Returns true if this was the final component.
+    fn mark_ready(&mut self, component: String) -> bool {
+        self.ready_components.insert(component);
+
+        let all_ready = ACTUATOR_COMPONENTS
+            .iter()
+            .chain(SENSOR_COMPONENTS.iter())
+            .all(|&name| self.ready_components.contains(name));
+
+        if all_ready && !self.all_components_ready {
+            self.all_components_ready = true;
+        }
+
+        self.all_components_ready
+    }
+
+    /// Return names of components still awaited
+    fn pending(&self) -> Vec<&str> {
+        ACTUATOR_COMPONENTS
+            .iter()
+            .chain(SENSOR_COMPONENTS.iter())
+            .filter_map(|&name| {
+                if self.ready_components.contains(name) {
+                    None
+                } else {
+                    Some(name)
+                }
+            })
+            .collect()
+    }
+}
 
 // ============================================================================
 // Controller State
@@ -85,8 +149,24 @@ struct ControllerState {
     /// When did we last detect presence? (for PIR timeout in Silent mode)
     last_presence_time: Instant,
 
+    /// Pending LCD command to send when speech playback starts
+    pending_lcd_command: Option<Command>,
+
+    /// Pending fact extraction: (user_msg, assistant_response) from the last exchange.
+    ///
+    /// Set after each conversation turn and processed in `handle_speech_complete`,
+    /// so extraction runs while the bot is transitioning back to Ready — never
+    /// blocking the user from getting a response.
+    pending_extraction: Option<(String, String)>,
+
+    /// Tracks component readiness during startup
+    startup: StartupTracker,
+
     /// System configuration
     config: SystemConfig,
+
+    /// How long the user has been continuously present (updated from DeskPresenceDuration events)
+    presence_duration_minutes: u32,
 }
 
 impl ControllerState {
@@ -111,7 +191,11 @@ impl ControllerState {
             awaiting_speech: false,
             speech_capture_active: false,
             last_presence_time: Instant::now(),
+            pending_lcd_command: None,
+            pending_extraction: None,
+            startup: StartupTracker::new(),
             config,
+            presence_duration_minutes: 0,
         })
     }
 
@@ -125,6 +209,222 @@ impl ControllerState {
     fn mark_interaction(&mut self) {
         self.last_interaction = Instant::now();
         self.bot_state.mark_interaction();
+    }
+}
+
+// ============================================================================
+// Response Parsing Helpers
+// ============================================================================
+
+/// Parsed LLM response containing spoken text and optional commands
+#[derive(Debug)]
+struct ParsedResponse {
+    /// Text to be spoken via TTS
+    spoken_text: String,
+    /// Optional LCD display command
+    lcd_command: Option<Command>,
+}
+
+/// Parse LLM response to extract spoken text and commands
+///
+/// Format: "Some spoken text\nCOMMAND: DisplayText|<line1>|<line2>|<duration_ms>"
+/// Handles markdown formatting and extracts clean command
+/// Only extracts the FIRST command found to prevent multiple LCD displays
+fn parse_llm_response(response: &str) -> ParsedResponse {
+    let mut spoken_text = response.to_string();
+    let mut lcd_command = None;
+
+    // Look for FIRST COMMAND: prefix (may be wrapped in markdown **)
+    if let Some(cmd_start) = response.find("COMMAND:") {
+        // Get text before command (strip trailing markdown/whitespace)
+        spoken_text = response[..cmd_start]
+            .trim()
+            .trim_end_matches('*')
+            .trim()
+            .to_string();
+
+        // Extract command line (everything from COMMAND: to end of line or next **)
+        let after_command = &response[cmd_start + 8..]; // Skip "COMMAND:"
+        let command_line = after_command
+            .lines()
+            .next()
+            .unwrap_or("")
+            .trim()
+            .trim_matches('*') // Strip markdown bold
+            .trim();
+
+        debug!("Extracted command line: '{}'", command_line);
+
+        // Parse DisplayText command: DisplayText|<line1>|<line2>|<duration_ms>
+        if let Some(display_cmd) = command_line.strip_prefix("DisplayText|") {
+            let parts: Vec<&str> = display_cmd.split('|').collect();
+
+            if parts.len() >= 3 {
+                let line1 = parts[0].to_string();
+                let line2 = parts[1].to_string();
+                let duration_str = parts[2].trim();
+
+                // Parse duration (handle potential errors gracefully)
+                if let Ok(duration_ms) = duration_str.parse::<u64>() {
+                    lcd_command = Some(Command::DisplayText {
+                        line1: line1.clone(),
+                        line2: line2.clone(),
+                        duration_ms: Some(duration_ms),
+                    });
+
+                    info!(
+                        "Parsed LCD command: line1='{}', line2='{}', duration={}ms",
+                        line1, line2, duration_ms
+                    );
+                } else {
+                    warn!(
+                        "Failed to parse duration '{}' from command line: '{}'",
+                        duration_str, command_line
+                    );
+                }
+            } else {
+                warn!(
+                    "Invalid DisplayText command format (expected 3 parts, got {}): '{}'",
+                    parts.len(),
+                    command_line
+                );
+            }
+        }
+    }
+
+    ParsedResponse {
+        spoken_text,
+        lcd_command,
+    }
+}
+
+// ============================================================================
+// Memory Command Handling
+// ============================================================================
+
+/// Explicit memory commands parsed from user speech before the LLM sees them.
+///
+/// These are handled transparently: the fact database is updated first, then
+/// the user's original message is passed to the LLM so it can respond naturally
+/// (e.g. "I'll remember that!" or "I've forgotten that.").
+enum MemoryCommandType {
+    /// User asked the bot to remember a specific fact
+    StoreFact(String),
+    /// User asked the bot to forget something
+    ForgetFact(String),
+}
+
+/// Detect whether the user's message is an explicit memory command using the LLM.
+///
+/// Uses a fast, low-temperature LLM call to detect natural language intent.
+/// Catches variations like "remember that", "don't forget", "keep in mind",
+/// "you should know", etc. Returns None silently on any error.
+async fn detect_memory_command(text: &str, llm: &LlmService) -> Option<MemoryCommandType> {
+    // Skip very short messages
+    if text.split_whitespace().count() < 3 {
+        return None;
+    }
+
+    let prompt = format!(
+        "Analyze this user message and detect if they are explicitly asking you to remember or forget something.\n\n\
+         User message: \"{}\"\n\n\
+         Respond with ONLY a JSON object (no markdown):  \n\
+         {{\"intent\": \"remember\" | \"forget\" | \"none\", \"content\": \"extracted fact or query\"}}\n\n\
+         Examples:\n\
+         - \"Can you remember that I like coffee?\" → {{\"intent\": \"remember\", \"content\": \"I like coffee\"}}\n\
+         - \"Don't forget I work from home\" → {{\"intent\": \"remember\", \"content\": \"I work from home\"}}\n\
+         - \"Forget that I like tea\" → {{\"intent\": \"forget\", \"content\": \"I like tea\"}}\n\
+         - \"What's the weather like?\" → {{\"intent\": \"none\", \"content\": \"\"}}\n\n\
+         JSON response:",
+        text
+    );
+
+    let messages = vec![
+        Message::system(
+            "You detect memory intent from user messages. \
+             Respond ONLY with JSON, no markdown formatting.",
+        ),
+        Message::user(&prompt),
+    ];
+
+    let response = llm.generate_with_options(&messages, 0.0, 256).await.ok()?;
+
+    // Parse JSON response
+    #[derive(serde::Deserialize)]
+    struct IntentResponse {
+        intent: String,
+        content: String,
+    }
+
+    let json_str = response
+        .trim()
+        .trim_start_matches("```json")
+        .trim_start_matches("```")
+        .trim_end_matches("```")
+        .trim();
+
+    let intent: IntentResponse = serde_json::from_str(json_str).ok()?;
+
+    match intent.intent.to_lowercase().as_str() {
+        "remember" if !intent.content.is_empty() => {
+            debug!("Detected memory store intent: '{}'", intent.content);
+            Some(MemoryCommandType::StoreFact(intent.content))
+        }
+        "forget" if !intent.content.is_empty() => {
+            debug!("Detected memory forget intent: '{}'", intent.content);
+            Some(MemoryCommandType::ForgetFact(intent.content))
+        }
+        _ => None,
+    }
+}
+
+/// Apply any explicit memory command BEFORE sending the message to the LLM.
+///
+/// This updates the fact database silently so the LLM can then respond
+/// naturally to the user's request ("I'll remember that!").
+async fn preprocess_memory_commands(text: &str, state: &mut ControllerState) {
+    let Some(cmd) = detect_memory_command(text, &state.llm).await else {
+        return;
+    };
+
+    match cmd {
+        MemoryCommandType::StoreFact(fact_text) => {
+            info!("Storing user-told fact: '{}'", fact_text);
+            match state
+                .memory
+                .add_fact(fact_text.clone(), FactSource::UserTold, None)
+                .await
+            {
+                Ok(_) => info!("Fact stored successfully"),
+                Err(e) => warn!("Failed to store fact (may be duplicate): {}", e),
+            }
+        }
+
+        MemoryCommandType::ForgetFact(query) => {
+            info!("User wants to forget: '{}'", query);
+            if state.memory.has_semantic_memory() {
+                match state.memory.search_facts(&query, 1, 0.65).await {
+                    Ok(results) if !results.is_empty() => {
+                        let (fact, score) = &results[0];
+                        info!(
+                            "Found fact to forget (similarity={:.2}): '{}'",
+                            score, fact.text
+                        );
+                        let fact_id = fact.id.clone();
+                        if let Err(e) = state.memory.remove_fact(&fact_id) {
+                            warn!("Failed to remove fact: {}", e);
+                        } else {
+                            info!("Fact removed from long-term memory");
+                        }
+                    }
+                    _ => {
+                        info!("No matching fact found to forget");
+                    }
+                }
+            } else {
+                warn!("Semantic memory not available — cannot search for fact to forget");
+            }
+        }
     }
 }
 
@@ -162,15 +462,17 @@ pub async fn run_controller(
         .await
         .context("Failed to initialize controller state")?;
 
-    // Send initial state commands
-    if let Err(e) = send_initial_commands(&cmd_tx, &state).await {
-        error!("Failed to send initial commands: {}", e);
+    // Send loading state: red LEDs breathing, green LEDs off, RGB off.
+    // Actuators default to this on startup, but we reinforce it here in case
+    // the controller finishes loading before actuators emit ComponentReady.
+    if let Err(e) = send_loading_commands(&cmd_tx).await {
+        error!("Failed to send loading commands: {}", e);
     }
 
     // Create timeout ticker for periodic checks
     let mut timeout_check_interval = tokio::time::interval(Duration::from_secs(1));
 
-    info!("AI controller ready");
+    info!("AI controller ready, waiting for components to report in");
 
     loop {
         tokio::select! {
@@ -214,13 +516,19 @@ async fn handle_event(
         Event::WakeWordDetected => handle_wake_word(state, cmd_tx).await?,
         Event::SpeechCaptureStarted => handle_speech_capture_started(state, cmd_tx).await?,
         Event::SpeechCaptured(text) => handle_speech_captured(text, state, cmd_tx).await?,
+        Event::SpeechPlaybackStarted => handle_speech_playback_started(state, cmd_tx).await?,
         Event::SpeechComplete => handle_speech_complete(state, cmd_tx).await?,
-        Event::SystemReady => handle_system_ready(state, cmd_tx).await?,
         Event::PresenceDetected => handle_presence_detected(state, cmd_tx).await?,
         Event::NoPresenceSince(duration) => handle_no_presence(duration, state, cmd_tx).await?,
+        Event::DeskPresenceDuration(minutes) => {
+            handle_desk_presence_duration(minutes, state, cmd_tx).await?
+        }
         Event::AmbientNoiseLevel(level) => handle_ambient_noise(level, state, cmd_tx).await?,
         Event::UserRequestedDND => handle_user_requested_dnd(state, cmd_tx).await?,
         Event::UserRequestedWakeUp => handle_user_requested_wakeup(state, cmd_tx).await?,
+        Event::ComponentReady { component } => {
+            handle_component_ready(component, state, cmd_tx).await?
+        }
         Event::ComponentHealth { component, healthy } => {
             handle_component_health(component, healthy, state, cmd_tx).await?
         }
@@ -273,6 +581,25 @@ async fn handle_speech_capture_started(
     Ok(())
 }
 
+/// Handle speech playback started
+async fn handle_speech_playback_started(
+    state: &mut ControllerState,
+    cmd_tx: &mpsc::Sender<Command>,
+) -> Result<()> {
+    debug!("Speech playback started");
+
+    // Send pending LCD command now that speech is starting
+    if let Some(lcd_cmd) = state.pending_lcd_command.take() {
+        info!("Sending LCD command synchronized with speech start");
+        cmd_tx
+            .send(lcd_cmd)
+            .await
+            .context("Failed to send LCD command")?;
+    }
+
+    Ok(())
+}
+
 /// Handle speech playback completion
 async fn handle_speech_complete(
     state: &mut ControllerState,
@@ -281,33 +608,90 @@ async fn handle_speech_complete(
     info!("Speech playback complete");
 
     // Only transition if we're actually in Speaking state
-    if matches!(
+    if !matches!(
         state.bot_state.conversation_state,
         ConversationState::Active(ActiveSubState::Speaking)
     ) {
-        // Now it's safe to return to ready state
-        return_to_ready_state(state, cmd_tx).await?;
-    } else {
         debug!(
             "Received SpeechComplete but not in Speaking state (current: {:?})",
             state.bot_state.conversation_state
         );
+        return Ok(());
     }
 
+    // Run pending fact extraction before returning to Ready.
+    // We briefly show the Learning LED to give visual feedback during extraction.
+    // This happens after the bot finishes speaking so the user never waits for it.
+    if let Some((user_msg, assistant_msg)) = state.pending_extraction.take() {
+        debug!("Processing pending fact extraction");
+
+        // Visual cue: Learning state during extraction
+        state.bot_state.conversation_state = ConversationState::Active(ActiveSubState::Learning);
+        send_state_commands(cmd_tx, state).await?;
+
+        let extracted_facts = state.llm.extract_facts(&user_msg, &assistant_msg).await;
+
+        if extracted_facts.is_empty() {
+            debug!("No facts extracted from exchange");
+        } else {
+            info!(
+                "Extracted {} fact(s) from exchange — storing in long-term memory",
+                extracted_facts.len()
+            );
+            for fact_text in extracted_facts {
+                match state
+                    .memory
+                    .add_fact(fact_text.clone(), FactSource::Conversation, None)
+                    .await
+                {
+                    Ok(fact) => debug!("Stored fact [{}]: '{}'", &fact.id[..8], fact.text),
+                    Err(e) => debug!("Fact skipped (duplicate or error): {}", e),
+                }
+            }
+        }
+    }
+
+    // Now return to ready state
+    return_to_ready_state(state, cmd_tx).await?;
     Ok(())
 }
 
-/// Handle system ready event (heavy initialization complete)
-async fn handle_system_ready(
+/// Handle a component reporting that it has finished initialisation
+///
+/// The controller tracks two startup phases:
+/// 1. All actuators ready → red LEDs breathing (loading sensors)
+/// 2. All components ready → green LEDs solid (system ready)
+async fn handle_component_ready(
+    component: String,
     state: &mut ControllerState,
     cmd_tx: &mpsc::Sender<Command>,
 ) -> Result<()> {
-    info!("System ready - transitioning from loading to ready state");
+    info!("Component ready: '{}'", component);
 
-    // Ensure we're in Ready state and send state commands
-    // This will transition LEDs from loading (red breathing) to ready (green breathing)
-    state.bot_state.conversation_state = ConversationState::Ready;
-    send_state_commands(cmd_tx, state).await?;
+    let all_ready = state.startup.mark_ready(component.clone());
+
+    let ready_count =
+        ACTUATOR_COMPONENTS.len() + SENSOR_COMPONENTS.len() - state.startup.pending().len();
+    let total = ACTUATOR_COMPONENTS.len() + SENSOR_COMPONENTS.len();
+
+    info!(
+        "Component ready: '{}' ({}/{})",
+        component, ready_count, total
+    );
+
+    if all_ready {
+        info!("All components ready — transitioning to Ready state");
+
+        state.bot_state.conversation_state = ConversationState::Ready;
+
+        // Green LEDs solid = system ready; red LEDs off; RGB LED to Ready pattern
+        send_state_commands(cmd_tx, state).await?;
+
+        info!("System is READY. Say 'hey' to wake Pi Bot.");
+    } else {
+        let pending = state.startup.pending();
+        info!("Still waiting for: {:?}", pending);
+    }
 
     Ok(())
 }
@@ -331,6 +715,11 @@ async fn handle_speech_captured(
     state.awaiting_speech = false;
     state.speech_capture_active = false; // Speech capture complete
 
+    // Pre-process explicit memory commands (remember / forget) so the fact
+    // database is updated before the LLM sees the message. The LLM then
+    // responds naturally to the original phrasing.
+    preprocess_memory_commands(&text, state).await;
+
     // Transition to thinking state
     state.bot_state.conversation_state = ConversationState::Active(ActiveSubState::Thinking);
     send_state_commands(cmd_tx, state).await?;
@@ -341,8 +730,15 @@ async fn handle_speech_captured(
         .await
         .context("Failed to send StopListening command")?;
 
-    // Get conversation context from memory
-    let history = state.memory.get_context();
+    // Build conversation context.
+    // When semantic memory is enabled, augment with relevant long-term facts
+    // so the LLM can reference what it knows about the user.
+    let history =
+        if state.memory.has_semantic_memory() && state.config.memory.fact_extraction_enabled {
+            state.memory.get_context_with_facts(&text).await
+        } else {
+            state.memory.get_context()
+        };
 
     // Query LLM
     info!("Querying LLM...");
@@ -378,12 +774,22 @@ async fn handle_speech_captured(
 
     info!("LLM response: '{}'", response);
 
+    // Parse response to extract spoken text and commands
+    let parsed = parse_llm_response(&response);
+
     // Transition to learning state (brief, store in memory)
     state.bot_state.conversation_state = ConversationState::Active(ActiveSubState::Learning);
     send_state_commands(cmd_tx, state).await?;
 
-    // Store exchange in memory
-    state.memory.add_exchange(text, response.clone());
+    // Store exchange in memory (store original response with commands for context)
+    state.memory.add_exchange(text.clone(), response.clone());
+
+    // Queue fact extraction to run AFTER speech completes so it never adds
+    // latency to the user experience. Only queued when extraction is enabled.
+    if state.config.memory.fact_extraction_enabled && state.memory.has_semantic_memory() {
+        state.pending_extraction = Some((text, response.clone()));
+        debug!("Queued fact extraction for post-speech processing");
+    }
 
     // Transition to speaking state
     state.bot_state.conversation_state = ConversationState::Active(ActiveSubState::Speaking);
@@ -395,9 +801,17 @@ async fn handle_speech_captured(
         .await
         .context("Failed to send StopListening command")?;
 
-    // Send TTS command
+    // Store LCD command to send when speech playback starts (for better timing)
+    if let Some(lcd_cmd) = parsed.lcd_command {
+        info!("Storing LCD command to send when speech starts");
+        state.pending_lcd_command = Some(lcd_cmd);
+    }
+
+    // Send TTS command (speak the parsed text without the command part)
     cmd_tx
-        .send(Command::Speak { text: response })
+        .send(Command::Speak {
+            text: parsed.spoken_text,
+        })
         .await
         .context("Failed to send speak command")?;
 
@@ -421,11 +835,10 @@ async fn handle_presence_detected(
     if let ConversationState::Silent { manual: false } = state.bot_state.conversation_state {
         info!("Presence detected while in auto Silent - transitioning to Ready");
         state.bot_state.conversation_state = ConversationState::Ready;
+        // Reset presence duration so the bot gives the user a moment to settle
+        // before the PIR sensor triggers an observation
+        state.presence_duration_minutes = 0;
         send_state_commands(cmd_tx, state).await?;
-
-        // TODO Phase 2: Occasionally greet user with a friendly message
-        // Example: "Welcome back!" or "Good to see you again!"
-        // This would emit Event::BotInitiatedGreeting or similar
     }
 
     Ok(())
@@ -439,6 +852,8 @@ async fn handle_no_presence(
 ) -> Result<()> {
     info!("No presence for {:?}", duration);
     state.bot_state.presence_detected = false;
+    // Reset desk presence counter — will restart from zero when user returns
+    state.presence_duration_minutes = 0;
 
     // Per diagram: If in Ready mode and no presence detected, transition to Silent (auto)
     // This conserves power when user is away from desk
@@ -464,6 +879,34 @@ async fn handle_ambient_noise(
     // Phase 2: Could adjust behavior based on noise level
     // - High noise → reduce passive observation
     // - Music detected → enter ambient lighting mode
+    Ok(())
+}
+
+/// Handle periodic desk presence duration update
+///
+/// This event is emitted by the PIR sensor at random intervals while the user
+/// is continuously present. The controller uses this as a trigger to decide
+/// whether to initiate a proactive conversation (Observing state).
+async fn handle_desk_presence_duration(
+    minutes: u32,
+    state: &mut ControllerState,
+    cmd_tx: &mpsc::Sender<Command>,
+) -> Result<()> {
+    debug!("Desk presence duration update: {} minutes", minutes);
+    state.presence_duration_minutes = minutes;
+
+    // Trigger observation logic only once the system is fully loaded and
+    // we are in the Ready state with confirmed presence.
+    // Guard against observations during startup (before all components are ready).
+    if state.startup.all_components_ready
+        && matches!(state.bot_state.conversation_state, ConversationState::Ready)
+        && state.bot_state.presence_detected
+    {
+        trigger_observation(state, cmd_tx).await?;
+    } else if !state.startup.all_components_ready {
+        debug!("Skipping observation — system not fully initialised yet");
+    }
+
     Ok(())
 }
 
@@ -528,6 +971,136 @@ async fn handle_user_requested_wakeup(
         .context("Failed to send UnlockBot command")?;
 
     send_state_commands(cmd_tx, state).await?;
+
+    Ok(())
+}
+
+// ============================================================================
+// Observation Logic
+// ============================================================================
+
+/// Execute a passive observation cycle.
+///
+/// Triggered when the PIR sensor emits a DeskPresenceDuration event and the bot
+/// is in the Ready state with presence detected.
+///
+/// 1. Transitions to `Observing` state (blue breathing LED).
+/// 2. Builds an [`ObservationContext`] from current system state.
+/// 3. Decides probabilistically whether to speak.
+/// 4. If yes: generates a conversation opener via LLM and speaks it.
+/// 5. If no: returns to `Ready` and waits for the next event.
+async fn trigger_observation(
+    state: &mut ControllerState,
+    cmd_tx: &mpsc::Sender<Command>,
+) -> Result<()> {
+    info!("[Observation] Presence check received — entering Observing state");
+
+    // Transition to Observing state
+    state.bot_state.conversation_state = ConversationState::Observing;
+    send_state_commands(cmd_tx, state).await?;
+
+    // Collect context — prefer semantically relevant facts when available
+    let recent_facts: Vec<String> = if state.memory.has_semantic_memory() {
+        // Use a general "user context" query to surface diverse relevant facts
+        let observation_query = "user preferences habits work activities interests";
+        match state.memory.search_facts(observation_query, 5, 0.35).await {
+            Ok(results) if !results.is_empty() => {
+                results.into_iter().map(|(f, _)| f.text).collect()
+            }
+            _ => {
+                // Fall back to most recent facts
+                state
+                    .memory
+                    .get_all_facts()
+                    .iter()
+                    .rev()
+                    .take(5)
+                    .map(|f| f.text.clone())
+                    .collect()
+            }
+        }
+    } else {
+        state
+            .memory
+            .get_all_facts()
+            .iter()
+            .rev()
+            .take(5)
+            .map(|f| f.text.clone())
+            .collect()
+    };
+
+    let ctx = ObservationContext::new(
+        state.presence_duration_minutes,
+        state.last_interaction.elapsed(),
+        recent_facts,
+    );
+
+    // Decide whether to initiate
+    if !ctx.should_initiate(&state.config.behavior.observation_probability) {
+        info!("[Observation] Decision: stay quiet");
+        return_to_ready_state(state, cmd_tx).await?;
+        return Ok(());
+    }
+
+    info!("[Observation] Decision: initiate conversation");
+
+    // Build opener prompt and pass through the normal generation pipeline
+    let prompt = ctx.build_opener_prompt();
+    let history = state.memory.get_context();
+
+    // Transition to Thinking while generating
+    state.bot_state.conversation_state = ConversationState::Active(ActiveSubState::Thinking);
+    send_state_commands(cmd_tx, state).await?;
+
+    let response = match state.llm.generate(&prompt, &history).await {
+        Ok(r) => r,
+        Err(e) => {
+            error!("[Observation] LLM generation failed: {}", e);
+            return_to_ready_state(state, cmd_tx).await?;
+            return Ok(());
+        }
+    };
+
+    info!("[Observation] Opener: '{}'", response);
+
+    // Parse for optional LCD command embedded in response
+    let parsed = parse_llm_response(&response);
+
+    // Brief Learning state to store the exchange
+    state.bot_state.conversation_state = ConversationState::Active(ActiveSubState::Learning);
+    send_state_commands(cmd_tx, state).await?;
+
+    // Record as a bot-initiated exchange so memory is consistent
+    state
+        .memory
+        .add_exchange("[bot-initiated]".to_string(), response.clone());
+
+    // Transition to Speaking
+    state.bot_state.conversation_state = ConversationState::Active(ActiveSubState::Speaking);
+    send_state_commands(cmd_tx, state).await?;
+
+    // Stop microphone so the bot doesn't listen to its own voice
+    cmd_tx
+        .send(Command::StopListening)
+        .await
+        .context("Failed to send StopListening command")?;
+
+    // Queue LCD command (sent on SpeechPlaybackStarted for timing)
+    if let Some(lcd_cmd) = parsed.lcd_command {
+        state.pending_lcd_command = Some(lcd_cmd);
+    }
+
+    // Speak the opener — SpeechComplete will return us to Ready
+    cmd_tx
+        .send(Command::Speak {
+            text: parsed.spoken_text,
+        })
+        .await
+        .context("Failed to send Speak command")?;
+
+    // Mark interaction so the observation probability resets
+    state.mark_interaction();
 
     Ok(())
 }
@@ -598,15 +1171,28 @@ async fn return_to_ready_state(
 // Command Generation
 // ============================================================================
 
-/// Send initial commands when controller starts
-async fn send_initial_commands(
-    cmd_tx: &mpsc::Sender<Command>,
-    state: &ControllerState,
-) -> Result<()> {
-    info!("Sending initial state commands");
+/// Send loading state commands when controller first starts.
+///
+/// Red LEDs breathing + green off + RGB off signals that the system is
+/// initializing. The actuators also default to this state on startup so
+/// there is no visual gap before the controller's first command arrives.
+async fn send_loading_commands(cmd_tx: &mpsc::Sender<Command>) -> Result<()> {
+    info!("Sending loading state commands (red breathing, green off, RGB off)");
 
-    // Send RGB LED command for ready state
-    send_state_commands(cmd_tx, state).await?;
+    cmd_tx
+        .send(Command::SetRedLeds(StatusLedPattern::Breathing))
+        .await
+        .context("Failed to send red LED loading command")?;
+
+    cmd_tx
+        .send(Command::SetGreenLeds(StatusLedPattern::Off))
+        .await
+        .context("Failed to send green LED off command")?;
+
+    cmd_tx
+        .send(Command::LedOff)
+        .await
+        .context("Failed to send RGB LED off command")?;
 
     Ok(())
 }

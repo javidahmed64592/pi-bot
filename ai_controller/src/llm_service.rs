@@ -319,6 +319,109 @@ impl LlmService {
         Ok(response_text)
     }
 
+    /// Extract factual statements about the user from a conversation exchange.
+    ///
+    /// Uses a focused, low-temperature prompt to identify personal facts from
+    /// what the user said. Returns an empty `Vec` (never errors) so failures
+    /// are silent and never block the conversation flow.
+    ///
+    /// # Arguments
+    ///
+    /// * `user_msg` - The user's message text
+    /// * `assistant_response` - The assistant's reply (unused in prompt, kept for future use)
+    ///
+    /// # Returns
+    ///
+    /// Vector of extracted fact strings (may be empty)
+    ///
+    /// # Performance
+    ///
+    /// Uses a 512-token context window and temperature 0.0 to keep this call fast.
+    /// Called *after* the bot finishes speaking so it does not add latency to responses.
+    pub async fn extract_facts(&self, user_msg: &str, _assistant_response: &str) -> Vec<String> {
+        // Skip very short messages — unlikely to contain personal facts
+        if user_msg.split_whitespace().count() < 4 {
+            debug!("Skipping fact extraction for short message");
+            return vec![];
+        }
+
+        let prompt = format!(
+            "Extract ATOMIC personal facts about the user from their message.\n\n\
+             CRITICAL RULES:\n\
+             1. Convert \"I [verb] X\" to \"User [verb] X\"\n\
+             2. Do NOT generalize X\n\
+             3. Do NOT add your own assumptions\n\
+             4. Preserve the user's wording — never censor\n\
+             5. Extract only facts about the user (preferences, habits, work, relationships)\n\
+             6. Return [] if no personal facts found\n\n\
+             GOOD examples:\n\
+             - \"I like coffee\" → [\"User likes coffee\"]\n\
+             - \"I work as a teacher\" → [\"User works as a teacher\"]\n\
+             - \"My name is Alex\" → [\"User's name is Alex\"]\n\
+             - \"I prefer dark chocolate\" → [\"User prefers dark chocolate\"]\n\n\
+             BAD examples (DO NOT DO THIS):\n\
+             - \"I like spicy ramen\" → [\"User is spicy\"] ❌ WRONG (misinterpreted)\n\
+             - \"I like craft beer\" → [\"User likes beer\"] ❌ GENERALIZED (lost detail)\n\
+             - \"I like craft beer\" → [\"User likes craft beer\"] ✓ CORRECT (exact)\n\n\
+             User message: \"{}\"\n\n\
+             Respond with ONLY a JSON array of strings (no markdown):",
+            user_msg
+        );
+
+        let messages = vec![
+            Message::system(
+                "You are a fact extraction system. Extract personal facts LITERALLY — \
+                 preserve exact wording from the user's message. Never interpret, generalize, \
+                 or censor. Respond ONLY with a JSON array of strings.",
+            ),
+            Message::user(&prompt),
+        ];
+
+        let request = ChatRequest {
+            model: self.config.model.clone(),
+            messages,
+            stream: false,
+            options: ChatOptions {
+                temperature: 0.0,
+                num_ctx: 512,
+            },
+        };
+
+        let url = format!("{}/api/chat", self.config.ollama_host);
+
+        let response = match self.client.post(&url).json(&request).send().await {
+            Ok(r) => r,
+            Err(e) => {
+                warn!("Fact extraction request failed: {}", e);
+                return vec![];
+            }
+        };
+
+        if !response.status().is_success() {
+            warn!("Fact extraction returned HTTP {}", response.status());
+            return vec![];
+        }
+
+        let chat_response: ChatResponse = match response.json().await {
+            Ok(r) => r,
+            Err(e) => {
+                warn!("Failed to parse fact extraction response: {}", e);
+                return vec![];
+            }
+        };
+
+        let content = chat_response.message.content.trim().to_string();
+        info!("Fact extraction raw response: '{}'", content);
+
+        let facts = parse_fact_list(&content);
+        if facts.is_empty() {
+            info!("No facts extracted from response");
+        } else {
+            info!("Extracted {} fact(s)", facts.len());
+        }
+        facts
+    }
+
     /// Check if Ollama server is available
     ///
     /// # Returns
@@ -344,6 +447,93 @@ impl LlmService {
     /// Get the configured temperature
     pub fn temperature(&self) -> f32 {
         self.config.temperature
+    }
+
+    /// Generate a response with custom options (internal helper for memory/extraction calls)
+    ///
+    /// # Arguments
+    ///
+    /// * `messages` - Full message context (system + user messages)
+    /// * `temperature` - Override temperature (0.0 for deterministic, higher for creative)
+    /// * `max_tokens` - Context window size
+    ///
+    /// # Returns
+    ///
+    /// Raw text response from the model
+    pub(crate) async fn generate_with_options(
+        &self,
+        messages: &[Message],
+        temperature: f32,
+        max_tokens: u32,
+    ) -> Result<String, LlmError> {
+        let request = ChatRequest {
+            model: self.config.model.clone(),
+            messages: messages.to_vec(),
+            stream: false,
+            options: ChatOptions {
+                temperature,
+                num_ctx: max_tokens,
+            },
+        };
+
+        let url = format!("{}/api/chat", self.config.ollama_host);
+
+        let response = self
+            .client
+            .post(&url)
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| LlmError::ApiRequestError(format!("HTTP request failed: {}", e)))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(LlmError::ApiRequestError(format!(
+                "HTTP {} - {}",
+                status, error_text
+            )));
+        }
+
+        let chat_response: ChatResponse = response
+            .json()
+            .await
+            .map_err(|e| LlmError::ResponseParseError(format!("JSON parse failed: {}", e)))?;
+
+        let response_text = chat_response.message.content.trim().to_string();
+
+        if response_text.is_empty() {
+            return Err(LlmError::EmptyResponse);
+        }
+
+        Ok(response_text)
+    }
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/// Parse a JSON array of strings from LLM extraction output.
+///
+/// The LLM may wrap the array in prose; this function finds the first `[…]`
+/// span and deserialises it, returning an empty `Vec` on any parse error.
+fn parse_fact_list(content: &str) -> Vec<String> {
+    let start = content.find('[').unwrap_or(content.len());
+    let end = content.rfind(']').map(|i| i + 1).unwrap_or(0);
+
+    if start >= end {
+        return vec![];
+    }
+
+    let json_str = &content[start..end];
+
+    match serde_json::from_str::<Vec<String>>(json_str) {
+        Ok(facts) => facts.into_iter().filter(|f| !f.trim().is_empty()).collect(),
+        Err(e) => {
+            warn!("Failed to parse fact list '{}': {}", json_str, e);
+            vec![]
+        }
     }
 }
 

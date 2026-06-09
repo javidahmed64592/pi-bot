@@ -21,6 +21,7 @@ use crate::audio_sensor::AudioSensorCommand;
 /// * `speaker_tx` - Channel to speaker actuator
 /// * `green_led_tx` - Channel to green LED actuator
 /// * `red_led_tx` - Channel to red LED actuator
+/// * `lcd_tx` - Channel to LCD actuator
 /// * `audio_cmd_tx` - Channel to audio sensor (for enabling/disabling detection)
 /// * `shutdown_rx` - Shutdown signal receiver
 ///
@@ -35,6 +36,7 @@ pub async fn run_command_distributor(
     speaker_tx: mpsc::Sender<Command>,
     green_led_tx: mpsc::Sender<Command>,
     red_led_tx: mpsc::Sender<Command>,
+    lcd_tx: mpsc::Sender<Command>,
     audio_cmd_tx: mpsc::Sender<AudioSensorCommand>,
     mut shutdown_rx: broadcast::Receiver<()>,
 ) -> Result<()> {
@@ -84,6 +86,15 @@ pub async fn run_command_distributor(
                     Command::StopListening => {
                         if let Err(e) = audio_cmd_tx.send(AudioSensorCommand::DisableDetection).await {
                             log::error!("[Command Distributor] Failed to send to audio sensor: {}", e);
+                        }
+                    }
+
+                    // LCD commands
+                    Command::DisplayText { .. }
+                    | Command::ClearDisplay
+                    | Command::SetBacklight { .. } => {
+                        if let Err(e) = lcd_tx.send(command.clone()).await {
+                            log::error!("[Command Distributor] Failed to send to LCD: {}", e);
                         }
                     }
 

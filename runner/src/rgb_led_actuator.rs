@@ -18,14 +18,17 @@ use tokio::sync::{broadcast, mpsc};
 /// # Arguments
 /// * `config` - System configuration with GPIO pin mapping
 /// * `command_rx` - Channel to receive commands from controller
+/// * `startup_tx` - Channel to notify runner that this component is ready
 /// * `shutdown_rx` - Shutdown signal receiver
 ///
 /// # Behavior
 /// Listens for SetColor and SetPattern commands and controls the RGB LED.
-/// For patterns, runs animation loops. Exits gracefully on shutdown signal.
+/// For patterns, runs animation loops. Defaults to dim-red breathing on startup
+/// to indicate the system is loading. Exits gracefully on shutdown signal.
 pub async fn run_rgb_led_actuator(
     config: &SystemConfig,
     mut command_rx: mpsc::Receiver<Command>,
+    startup_tx: mpsc::Sender<(String, bool)>,
     mut shutdown_rx: broadcast::Receiver<()>,
 ) -> Result<()> {
     log::info!("[RGB LED Actuator Task] Starting...");
@@ -40,8 +43,19 @@ pub async fn run_rgb_led_actuator(
 
     log::info!("[RGB LED Actuator Task] Initialized");
 
-    // Current pattern state
-    let mut current_pattern: Option<(LedPattern, Vec<RgbColor>)> = None;
+    // Signal runner that this component is ready
+    if let Err(e) = startup_tx.send(("rgb_led".to_string(), true)).await {
+        log::warn!(
+            "[RGB LED Actuator Task] Failed to send startup signal: {}",
+            e
+        );
+    }
+
+    // Default to dim-red breathing for the loading phase. The controller will
+    // override this with SetRedLeds(Breathing) once it starts, and then
+    // transition to the ready pattern when all components report in.
+    let mut current_pattern: Option<(LedPattern, Vec<RgbColor>)> =
+        Some((LedPattern::Breathing, vec![RgbColor { r: 100, g: 0, b: 0 }]));
     let mut pattern_frame = 0u32;
 
     // Pattern animation interval (50ms = 20 FPS)

@@ -18,6 +18,14 @@ pub enum Event {
     /// Used to trigger presence timeout behaviors
     NoPresenceSince(Duration),
 
+    /// Periodic update reporting continuous desk presence duration
+    ///
+    /// Emitted every 5 minutes while the user is continuously present at their desk.
+    /// Resets when presence ends and restarts when they return.
+    ///
+    /// The value represents the total minutes of uninterrupted presence.
+    DeskPresenceDuration(u32),
+
     // ============================================================================
     // Audio Sensor Events (Microphone)
     // ============================================================================
@@ -33,6 +41,11 @@ pub enum Event {
     /// The String contains the transcribed text from the user
     SpeechCaptured(String),
 
+    /// Speech playback has started
+    /// Sent by speaker actuator when TTS audio begins playing
+    /// Used to synchronize LCD display with speech output
+    SpeechPlaybackStarted,
+
     /// Speech playback has completed
     /// Sent by speaker actuator when TTS audio finishes playing
     /// Used to synchronize state transitions (Speaking → Ready)
@@ -41,14 +54,6 @@ pub enum Event {
     /// Ambient noise level detected (0-100)
     /// Could be used to detect if user is in a meeting, music playing, etc.
     AmbientNoiseLevel(u8),
-
-    // ============================================================================
-    // System Events
-    // ============================================================================
-    /// System has completed initialization and is ready for interaction
-    /// Sent by audio sensor when Vosk model finishes loading
-    /// Triggers transition from loading state (red LEDs) to ready state (green LEDs)
-    SystemReady,
 
     // ============================================================================
     // Camera Sensor Events (Phase 2+)
@@ -77,6 +82,8 @@ pub enum Event {
     // ============================================================================
     // User Action Events
     // ============================================================================
+    // TODO: These should be commands sent by the LLM, not events that we define
+
     /// User requested Do Not Disturb (Silent) mode
     /// Bot will enter Silent state, showing red breathing LEDs
     UserRequestedDND,
@@ -88,6 +95,9 @@ pub enum Event {
     // ============================================================================
     // System Events
     // ============================================================================
+    /// Ready status of a component
+    ComponentReady { component: String },
+
     /// Health status of a component changed
     /// component: name of the component ("pir", "camera", "audio", etc.)
     /// healthy: true if component is working, false if failed
@@ -96,7 +106,10 @@ pub enum Event {
 
 impl Event {
     pub fn is_pir_event(&self) -> bool {
-        matches!(self, Event::PresenceDetected | Event::NoPresenceSince(_))
+        matches!(
+            self,
+            Event::PresenceDetected | Event::NoPresenceSince(_) | Event::DeskPresenceDuration(_)
+        )
     }
 
     pub fn is_audio_event(&self) -> bool {
@@ -121,7 +134,10 @@ impl Event {
     // }
 
     pub fn is_system_event(&self) -> bool {
-        matches!(self, Event::ComponentHealth { .. })
+        matches!(
+            self,
+            Event::ComponentReady { .. } | Event::ComponentHealth { .. }
+        )
     }
 
     pub fn is_user_action(&self) -> bool {

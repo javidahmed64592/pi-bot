@@ -80,19 +80,63 @@ llm:
     - Use contractions and casual language when appropriate
     - Expand on topics when the user shows interest
 
+    Special abilities:
+    - You can display messages on your LCD screen (16 characters per line, 2 lines)
+    - When you want to express personality visually, add this line to your response:
+      COMMAND: DisplayText|<line1>|<line2>|<duration_ms>
+    - IMPORTANT rules for commands:
+      * Write the COMMAND line as plain text, NOT in markdown bold or italics
+      * Only include ONE command per response
+      * Include the command at the END of your response, after all your normal text. Any text after the command will be ignored.
+      * Write the command ON ONE LINE, exactly as shown (no line breaks)
+    - Examples:
+      * After helping: "Sure thing! COMMAND: DisplayText|<(^-^)>|I helped!|5000"
+      * When happy: "Glad to help! COMMAND: DisplayText|(◕‿◕)|Happy to help!|3000"
+    - Keep LCD text short and expressive (max 16 chars per line)
+    - Duration is in milliseconds (3000 = 3 seconds, 5000 = 5 seconds)
+    - Only use this when it adds personality or clarity
+    - Don't use emojis in the LCD text. Stick to simple symbols like (^_^), (◕‿◕), etc.
+
 # Memory Configuration
 memory:
   session_storage: "data/sessions/"
-  long_term_storage: "data/memories.json"
+  long_term_storage: "data/memory/"
   max_short_term: 10
   fact_extraction_enabled: true
 
+  # Embeddings for semantic search
+  embeddings:
+    model_path: "models/embeddings/all-MiniLM-L6-v2.onnx"
+    tokenizer_path: "models/embeddings/all-MiniLM-L6-v2_tokenizer.json"
+    dimensions: 384
+    enabled: true  # Set to false to disable semantic memory
+
+  # Search configuration
+  search:
+    top_k: 5              # Return top 5 relevant facts
+    min_similarity: 0.7   # Minimum cosine similarity (0.0-1.0)
+    max_facts: 1000       # Maximum facts to store
+
 # Bot Behavior
 behavior:
-  passive_observation_interval: [300, 900]  # 5-15 minutes
+  passive_observation_interval: [300, 900]  # seconds for random observation checks
   conversation_timeout: 10  # seconds of silence
-  idle_timeout: 1800  # 30 minutes
-  do_not_disturb_duration: 3600  # 1 hour default
+  idle_timeout: 1800  # seconds before going idle
+  do_not_disturb_duration: 3600  # seconds to stay in DND mode after user leaves
+
+  # Observation probability weighting
+  # Formula: base + (presence_bonus) + (interaction_bonus), capped at ceiling
+  observation_probability:
+    base: 0.20  # base chance
+    presence:
+      minutes_per_step: 30.0  # +bonus every X minutes at desk
+      max_steps: 4.0          # cap at X steps (steps * minutes per step = max time for full bonus)
+      bonus_per_step: 0.10    # +X% per step
+    interaction:
+      minutes_per_step: 15.0  # +bonus every X minutes of silence
+      max_steps: 3.0          # cap at X steps (steps * minutes per step = max time for full bonus)
+      bonus_per_step: 0.10    # +X% per step
+    ceiling: 0.90  # X% maximum total probability
 
 # RGB LED Configuration (StateBased lighting mode)
 # Each state can have a custom pattern and color [R, G, B] (0-255)

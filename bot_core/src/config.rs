@@ -62,8 +62,9 @@ pub struct GpioConfig {
 
     /// Status LED pins (green and red indicators)
     pub led_pins: LedPins,
-    // LCD I2C address (Phase 2+)
-    // pub lcd_i2c_address: u8,
+
+    /// LCD I2C address
+    pub lcd_i2c_address: u8,
 }
 
 /// RGB LED pin configuration (3 pins for PWM)
@@ -189,7 +190,7 @@ pub struct MemoryConfig {
     /// Directory for session storage
     pub session_storage: String,
 
-    /// Path to long-term memory JSON file
+    /// Directory for long-term memory (facts database)
     pub long_term_storage: String,
 
     /// Maximum number of recent messages to keep in short-term memory
@@ -197,6 +198,51 @@ pub struct MemoryConfig {
 
     /// Enable automatic fact extraction from conversations
     pub fact_extraction_enabled: bool,
+
+    /// Embeddings configuration for semantic search (Phase 2.5)
+    #[serde(default)]
+    pub embeddings: Option<EmbeddingsConfig>,
+
+    /// Search configuration for semantic memory
+    #[serde(default = "default_search_config")]
+    pub search: SearchConfig,
+}
+
+/// Embeddings model configuration for semantic search
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EmbeddingsConfig {
+    /// Path to ONNX model file
+    pub model_path: String,
+
+    /// Path to tokenizer JSON file
+    pub tokenizer_path: String,
+
+    /// Embedding dimensions (384 for all-MiniLM-L6-v2)
+    pub dimensions: usize,
+
+    /// Enable embeddings (set to false to disable semantic memory)
+    pub enabled: bool,
+}
+
+/// Search configuration for semantic memory
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SearchConfig {
+    /// Number of top facts to retrieve
+    pub top_k: usize,
+
+    /// Minimum cosine similarity threshold (0.0-1.0)
+    pub min_similarity: f32,
+
+    /// Maximum number of facts to store
+    pub max_facts: usize,
+}
+
+fn default_search_config() -> SearchConfig {
+    SearchConfig {
+        top_k: 5,
+        min_similarity: 0.7,
+        max_facts: 1000,
+    }
 }
 
 // ============================================================================
@@ -218,6 +264,38 @@ pub struct BehaviorConfig {
 
     /// Default Do Not Disturb duration in seconds
     pub do_not_disturb_duration: u64,
+
+    /// Observation probability weighting parameters
+    pub observation_probability: ObservationProbabilityConfig,
+}
+
+/// Observation probability weighting configuration
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ObservationProbabilityConfig {
+    /// Base probability (0.0-1.0)
+    pub base: f32,
+
+    /// Bonus per presence step (minutes per step, max steps, bonus per step)
+    pub presence: ProbabilityStepConfig,
+
+    /// Bonus per interaction silence step (minutes per step, max steps, bonus per step)
+    pub interaction: ProbabilityStepConfig,
+
+    /// Maximum total probability (0.0-1.0)
+    pub ceiling: f32,
+}
+
+/// Configuration for stepped probability bonuses
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProbabilityStepConfig {
+    /// Minutes per step
+    pub minutes_per_step: f32,
+
+    /// Maximum number of steps that contribute
+    pub max_steps: f32,
+
+    /// Probability bonus per step (0.0-1.0)
+    pub bonus_per_step: f32,
 }
 
 impl BehaviorConfig {

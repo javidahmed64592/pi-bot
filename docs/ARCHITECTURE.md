@@ -60,10 +60,11 @@ Every hardware component has a standalone test binary:
 ┌─────────────────────────────────────────────────────────────────┐
 │                         Runner (main.rs)                        │
 │  ┌────────────────────────────────────────────────────────────┐ │
-│  │ - Bootstrap channels                                       │ │
-│  │ - Spawn component tasks                                    │ │
-│  │ - Handle shutdown signal (Ctrl+C)                          │ │
-│  │ - Monitor component health                                 │ │
+│  │ 1. Initialise channels                                     │ │
+│  │ 2. Spawn AI controller + command distributor               │ │
+│  │ 3. Spawn actuators → wait for ComponentReady × 5          │ │
+│  │ 4. Spawn sensors   → wait for ComponentReady × 2          │ │
+│  │ 5. Wait for Ctrl+C (shutdown)                              │ │
 │  └────────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
                               │
@@ -87,6 +88,43 @@ Every hardware component has a standalone test binary:
     Events ────────────────→ Controller ────────────→ Commands
     (sensor data)         (decision making)      (actuator control)
 ```
+
+---
+
+## Startup Sequence
+
+The runner follows a strict startup order to ensure LED loading indicators
+are correct and that the AI controller **owns all LED state** — the runner
+never sends commands directly to actuators.
+
+```
+1. Channels initialised
+        │
+2. AI controller + command distributor spawned
+   (Controller begins loading LLM/memory in its task)
+        │
+3. Actuators spawned (RGB, Green, Red LEDs, Speaker, LCD)
+   Red + RGB LEDs default to red-breathing pattern (loading state)
+        │
+4. Each actuator sends ComponentReady → runner forwards to event bus
+   Controller receives ComponentReady × 5 → sends SetRedLeds(Breathing)
+        │
+5. Sensors spawned (PIR, Audio/Vosk)
+        │
+6. Each sensor sends ComponentReady → runner forwards to event bus
+   Controller receives ComponentReady × 7 (all) → sends:
+     SetGreenLeds(Solid)   ← system ready
+     SetRedLeds(Off)
+     RGB LED → Ready pattern
+        │
+7. Main loop: controller processes events until Ctrl+C
+        │
+8. Shutdown signal broadcast → all tasks stop → LEDs off
+```
+
+**Key invariant**: The runner only forwards startup signals as events. It
+never sends commands to actuators directly. All LED state is owned by the
+controller.
 
 ---
 
@@ -192,89 +230,57 @@ pi-bot/
 **Key Types**:
 
 ```rust
-// events.rs
+// events.rs — what sensors emit
 pub enum Event {
-    // Presence & Motion
+    // Presence
     PresenceDetected,
     NoPresenceSince(Duration),
 
-    // Audio Events
+    // Audio
     WakeWordDetected,
+    SpeechCaptureStarted,
     SpeechCaptured(String),
+    SpeechPlaybackStarted,
+    SpeechComplete,
     AmbientNoiseLevel(u8),
 
-    // Vision Events
-    HumanDetected { confidence: f32 },
-    DeskOccupied,
-    ObjectChange { description: String },
-
-    // Environmental
-    EnvironmentReading { temp: f32, humidity: f32 },
-    ProximityChanged { distance_cm: u16 },
-
     // System
+    ComponentReady { component: String },   // emitted once per component on startup
     ComponentHealth { component: String, healthy: bool },
+    SystemReady,                            // legacy; superseded by ComponentReady
+
+    // User actions (DND)
+    UserRequestedDND,
+    UserRequestedWakeUp,
 }
 
-// commands.rs
+// commands.rs — what the controller sends to actuators
 pub enum Command {
     // RGB LED
     SetColor(RgbColor),
     SetPattern { pattern: LedPattern, colors: Vec<RgbColor> },
-
-    // Audio
-    Speak { text: String, emotion: Emotion },
-    StopSpeaking,
+    LedOff,
 
     // Status LEDs
-    SetSystemHealth(HealthLevel),
+    SetGreenLeds(StatusLedPattern),   // Solid | Breathing | Flashing | Off
+    SetRedLeds(StatusLedPattern),
 
-    // Display
-    ShowText { line1: String, line2: String },
+    // LCD
+    DisplayText { line1: String, line2: String, duration_ms: Option<u64> },
+    ClearDisplay,
+    SetBacklight { on: bool },
 
-    // AI Control
+    // Audio
+    Speak { text: String },
+    StopSpeaking,
     StartListening,
     StopListening,
+
+    // State
+    LockBot,
+    UnlockBot,
     EnterConversationState(ConversationState),
     SetLightingMode(LightingMode),
-}
-
-// state.rs
-pub struct BotState {
-    pub conversation_state: ConversationState,
-    pub lighting_mode: LightingMode,
-    pub presence_detected: bool,
-    pub last_interaction: Instant,
-    pub current_emotion: Emotion,
-    pub observing_since: Option<Instant>,
-    // ... other state
-}
-
-pub enum ConversationState {
-    Ready,      // Default, monitoring, can observe and talk
-    Observing,  // Noticed something, deciding whether to speak
-    Active(ActiveSubState),  // In conversation
-    Silent,     // Do Not Disturb, won't initiate
-}
-
-pub enum ActiveSubState {
-    Listening,  // Capturing speech
-    Thinking,   // Processing through LLM
-    Speaking,   // Playing TTS
-    Learning,   // Storing memory
-}
-
-pub enum LightingMode {
-    StateBased,  // LED reflects conversation state
-    Ambient(AmbientPattern),  // Decorative pattern
-    Minimal,     // Dim or off
-}
-
-pub enum AmbientPattern {
-    Gradient { colors: Vec<RgbColor>, speed: f32 },
-    Rainbow { speed: f32 },
-    Pulse { color: RgbColor, speed: f32 },
-    Static { color: RgbColor },
 }
 ```
 
@@ -360,44 +366,29 @@ impl SpeakerController {
 // controller.rs
 pub async fn run_controller(
     mut event_rx: mpsc::Receiver<Event>,
-    led_tx: mpsc::Sender<Command>,
-    speaker_tx: mpsc::Sender<Command>,
-    status_tx: mpsc::Sender<Command>,
-    lcd_tx: mpsc::Sender<Command>,
+    cmd_tx: mpsc::Sender<Command>,
     mut shutdown_rx: broadcast::Receiver<()>,
-    config: BotConfig,
-) {
-    let mut state = BotState::default();
-    let mut llm = LlmService::new(config.llm).await;
-    let mut memory = MemoryService::new(config.memory).await;
+    config: SystemConfig,
+) -> Result<()> {
+    let mut state = ControllerState::new(config).await?;
+
+    // Enter loading state immediately (red LEDs breathing)
+    send_loading_commands(&cmd_tx).await?;
 
     loop {
         tokio::select! {
-            Some(event) = event_rx.recv() => {
-                let commands = handle_event(
-                    event,
-                    &mut state,
-                    &mut llm,
-                    &mut memory,
-                    &config
-                ).await;
-
-                for cmd in commands {
-                    dispatch_command(cmd, &led_tx, &speaker_tx, &status_tx, &lcd_tx).await;
-                }
-            }
-            _ = shutdown_rx.recv() => {
-                break;
-            }
+            Some(event) = event_rx.recv() => handle_event(event, &mut state, &cmd_tx).await?,
+            _ = timeout_interval.tick() => check_conversation_timeout(&mut state, &cmd_tx).await?,
+            _ = shutdown_rx.recv() => break,
         }
     }
 }
+```
 
-async fn handle_event(
-    event: Event,
-    state: &mut BotState,
-    llm: &mut LlmService,
-    memory: &mut MemoryService,
+**Startup tracking**: The controller maintains a `StartupTracker` that records
+which components have reported `ComponentReady`. When all 7 components are ready
+(5 actuators + 2 sensors), the controller transitions to the `Ready` conversation
+state and sends the "green LEDs solid, red LEDs off" commands.
     config: &BotConfig,
 ) -> Vec<Command> {
     match event {
@@ -507,24 +498,188 @@ impl LlmService {
 **Memory Service** (`memory_service.rs`):
 ```rust
 pub struct MemoryService {
-    short_term: VecDeque<Exchange>, // Last 10 exchanges
-    session_storage: PathBuf,       // Today's conversation
-    long_term_storage: PathBuf,     // Persistent facts
-}
-
-impl MemoryService {
-    pub async fn store_exchange(&mut self, user: &str, bot: &str) {
-        // Store in short-term
-        // Write to session file
-        // Extract facts for long-term storage
-    }
-
-    pub async fn get_relevant_context(&self, query: &str) -> ConversationContext {
-        // Retrieve relevant memories
-        // Build context object
-    }
+    short_term: VecDeque<Exchange>, // Last N exchanges (configurable)
+    session_storage: PathBuf,       // Today's conversation (JSON)
+    facts: Vec<Fact>,               // Long-term semantic facts
+    embedder: EmbeddingService,     // ONNX all-MiniLM-L6-v2
 }
 ```
+
+See the **Memory System** section below for full details.
+
+---
+
+### Memory System
+
+Pi Bot uses a three-tier memory architecture that provides both immediate
+conversational context and persistent long-term recall across sessions.
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                         MemoryService                            │
+├──────────────────────────────────────────────────────────────────┤
+│  Tier 1: Short-Term          Tier 2: Session       Tier 3: Facts │
+│  (RAM, ephemeral)            (disk, daily)         (disk, durable)│
+│  ┌───────────────┐           ┌─────────────┐       ┌──────────┐  │
+│  │ Last N        │ persist → │ YYYY-MM-DD  │       │facts.json│  │
+│  │ exchanges     │           │ .json       │       │+ vectors │  │
+│  │ (configurable)│           │             │       │          │  │
+│  └───────────────┘           └─────────────┘       └──────────┘  │
+│         │                           │                    ▲        │
+│         │ on startup:               │ cross-day seed     │        │
+│         │ load recent←──────────────┘                   │extract │
+│         │ from prev session                              │(LLM)   │
+│         │                                               │        │
+│         └─────── semantic search ────────────────────────        │
+│                   (before LLM call)                              │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+#### Tier 1 — Short-Term (RAM)
+
+Holds the last `max_short_term` exchanges (default: 10) in memory as a
+sliding window. Passed directly to the LLM as conversation history on each
+turn. Cleared on restart; session files persist it across restarts.
+
+**Cross-day continuity**: when the bot starts a brand-new session (no
+exchanges yet today), it seeds short-term memory with the last 3 exchanges
+from the most recent previous session, so conversations don't feel cold.
+
+#### Tier 2 — Session Storage (disk)
+
+One JSON file per calendar day at `data/sessions/YYYY-MM-DD.json`.
+All exchanges are appended after every turn, auto-saving the full
+transcript. Older sessions are never deleted automatically.
+
+#### Tier 3 — Long-Term Semantic Memory (disk)
+
+Stores durable *facts* extracted from conversations as structured records
+with dense vector embeddings, enabling semantic (meaning-based) search.
+
+**Embedding model**: `all-MiniLM-L6-v2` (ONNX, 80 MB, 384-dimensional vectors)
+located at `models/embeddings/all-MiniLM-L6-v2.onnx`.
+
+**Fact schema**:
+```rust
+pub struct Fact {
+    pub id: String,
+    pub text: String,              // e.g. "User prefers tea in the morning"
+    pub embedding: Vec<f32>,       // 384-dim normalised vector
+    pub timestamp: DateTime<Utc>,
+    pub source: FactSource,        // UserTold | Conversation | Observation
+    pub category: Option<String>,
+    pub relevance_count: u32,      // how often retrieved (for future ranking)
+    pub confidence: f32,
+}
+```
+
+**Storage**: `data/memory/facts.json` (plain JSON, no dependency on SQLite).
+
+#### Memory Retrieval (before each LLM call)
+
+```
+User says: "What should I have for lunch?"
+                    │
+                    ▼
+       EmbeddingService.embed(query)      ← ~50ms
+                    │
+                    ▼
+  cosine_similarity(query_vec, all_facts)
+                    │
+                    ▼
+  top-K facts with similarity ≥ threshold  (default: K=5, threshold=0.7)
+                    │
+                    ▼
+  Injected as system message:
+  "Relevant facts about the user:
+   - User dislikes spicy food [confidence: 82%]
+   - User usually eats lunch at 1pm [confidence: 74%]"
+                    │
+                    ▼
+            LLM generates response
+```
+
+#### Fact Extraction (after each exchange)
+
+Runs *after* the bot finishes speaking to avoid adding latency. Uses a
+deterministic, low-temperature LLM call with explicit rules to preserve
+the user's exact wording while converting first-person statements to
+third-person facts.
+
+```
+Bot finishes speaking (SpeechComplete event)
+                    │
+         pending_extraction set? yes
+                    │
+                    ▼
+         LED → Learning (purple pulse)
+                    │
+                    ▼
+  LLM: extract_facts(user_msg, assistant_response)
+    temperature: 0.0 (deterministic)
+    context: 512 tokens
+
+    Extraction rules enforced by prompt:
+    1. Convert "I [verb] X" → "User [verb] X"
+    2. Preserve X EXACTLY as stated (no interpretation/generalization)
+    3. Do NOT add assumptions or rephrase content
+    4. Extract only personal facts (preferences, habits, work, relationships)
+
+    Examples shown in prompt:
+    ✓ "I like coffee" → ["User likes coffee"]
+    ✗ "I like spicy ramen" → ["User is spicy"]  # WRONG (misinterpreted)
+    ✗ "I like craft beer" → ["User likes beer"]  # GENERALIZED (lost detail)
+    ✓ "I like craft beer" → ["User likes craft beer"]  # CORRECT (exact)
+                    │
+                    ▼
+  For each extracted fact:
+    embed → cosine check (similarity ≥ 0.9 → deduplicate)
+    store in fact_database → save facts.json
+                    │
+                    ▼
+         LED → Ready (green breathing)
+```
+
+**Why this approach?**
+Previous versions used a simple extraction prompt which caused the LLM to
+interpret and generalize user statements. The new prompt includes explicit
+rules and contrasting examples to enforce literal preservation.
+
+#### Explicit Memory Commands (AI-Detected)
+
+Users can manage the fact database via natural language, detected using a
+fast LLM call (temperature 0.0, 256 tokens) before the main conversation.
+
+```
+User says: "Can you remember that I like coffee?"
+                    │
+                    ▼
+  detect_memory_command(text, llm) → async LLM call:
+    - Analyzes user intent
+    - Returns JSON: {"intent": "remember"|"forget"|"none", "content": "fact"}
+    - Catches natural variations:
+        * "remember that..."
+        * "don't forget..."
+        * "keep in mind that..."
+        * "you should know..."
+                    │
+                    ▼
+  If intent == "remember":
+    store fact immediately (before main LLM call)
+    → LLM responds naturally: "I'll remember that!"
+
+  If intent == "forget":
+    semantic search → remove closest matching fact
+    → LLM responds: "I've forgotten that."
+```
+
+**Why AI detection?**
+Hardcoded phrase matching (e.g., `if text.starts_with("remember that")`)
+is rigid and misses natural variations. The AI-based approach:
+- Understands implicit phrasing ("don't forget I'm vegan")
+- Works with any natural language variant
+- Runs before the main LLM call so facts are stored transparently
+- Fails silently on errors (never blocks conversation flow)
 
 ---
 
@@ -614,93 +769,56 @@ impl HumanDetector {
 
 ### runner - Orchestration
 
-**Purpose**: Bootstrap system and spawn all component tasks
+**Purpose**: Bootstrap system and spawn all component tasks in startup order
 
-**Main Structure** (`main.rs`):
+**Startup order** (strictly sequential to guarantee correct LED states):
+
 ```rust
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Load configuration
     let config = load_config("config/config.yaml")?;
 
-    // Create channels
+    // 1. Create channels
     let (event_tx, event_rx) = mpsc::channel::<Event>(64);
-    let (led_tx, led_rx) = mpsc::channel::<Command>(32);
-    let (speaker_tx, speaker_rx) = mpsc::channel::<Command>(32);
-    let (status_tx, status_rx) = mpsc::channel::<Command>(32);
-    let (lcd_tx, lcd_rx) = mpsc::channel::<Command>(32);
+    let (startup_tx, mut startup_rx) = mpsc::channel::<(String, bool)>(16);
+    let (controller_cmd_tx, controller_cmd_rx) = mpsc::channel::<Command>(32);
+    // ... per-actuator command channels ...
     let (shutdown_tx, _) = broadcast::channel::<()>(16);
 
-    // Spawn sensor tasks
-    let pir_handle = tokio::spawn(pir_sensor_task(
-        event_tx.clone(),
-        shutdown_tx.subscribe(),
-        config.gpio.pir_pin,
-    ));
+    // 2. Spawn AI controller + command distributor first
+    tokio::spawn(run_controller(event_rx, controller_cmd_tx, shutdown_rx, config.clone()));
+    tokio::spawn(run_command_distributor(controller_cmd_rx, ...));
 
-    let audio_handle = tokio::spawn(audio_sensor_task(
-        event_tx.clone(),
-        shutdown_tx.subscribe(),
-        config.audio.clone(),
-    ));
+    // 3. Spawn actuators (each sends startup signal when hardware is ready)
+    tokio::spawn(run_rgb_led_actuator(&config, rgb_rx, startup_tx.clone(), shutdown_rx));
+    tokio::spawn(run_green_led_actuator(...));
+    tokio::spawn(run_red_led_actuator(...));
+    tokio::spawn(run_speaker_actuator(...));
+    tokio::spawn(run_lcd_actuator(...));
 
-    // ... spawn all other sensor tasks
+    // 4. Wait for 5 actuator signals; forward each as ComponentReady to controller
+    for _ in 0..ACTUATOR_COUNT {
+        let (name, _) = startup_rx.recv().await?;
+        event_tx.send(Event::ComponentReady { component: name }).await?;
+    }
 
-    // Spawn actuator tasks
-    let rgb_handle = tokio::spawn(rgb_led_actuator_task(
-        led_rx,
-        shutdown_tx.subscribe(),
-        config.gpio.rgb_pins,
-    ));
+    // 5. Spawn sensors (after all actuators are ready)
+    tokio::spawn(run_pir_sensor(&config, event_tx.clone(), startup_tx.clone(), shutdown_rx));
+    tokio::spawn(run_audio_sensor(&config, event_tx.clone(), audio_cmd_rx, shutdown_rx, startup_tx));
 
-    let speaker_handle = tokio::spawn(speaker_actuator_task(
-        speaker_rx,
-        shutdown_tx.subscribe(),
-        config.audio.clone(),
-    ));
+    // 6. Wait for 2 sensor signals; forward each as ComponentReady to controller
+    for _ in 0..SENSOR_COUNT {
+        let (name, _) = startup_rx.recv().await?;
+        event_tx.send(Event::ComponentReady { component: name }).await?;
+    }
+    // Controller receives all 7 ComponentReady events → transitions to Ready state
 
-    // ... spawn all other actuator tasks
-
-    // Spawn AI controller
-    let controller_handle = tokio::spawn(run_controller(
-        event_rx,
-        led_tx,
-        speaker_tx,
-        status_tx,
-        lcd_tx,
-        shutdown_tx.subscribe(),
-        config.bot,
-    ));
-
-    // Spawn health monitor
-    let health_handle = tokio::spawn(health_monitor_task(
-        event_tx.clone(),
-        shutdown_tx.subscribe(),
-    ));
-
-    // Wait for Ctrl+C
+    // 7. Wait for Ctrl+C and broadcast shutdown
     tokio::signal::ctrl_c().await?;
-    println!("Shutdown signal received");
-
-    // Broadcast shutdown
     shutdown_tx.send(())?;
-
-    // Wait for all tasks to complete
-    tokio::try_join!(
-        pir_handle,
-        audio_handle,
-        rgb_handle,
-        speaker_handle,
-        controller_handle,
-        health_handle,
-    )?;
-
-    println!("Pi Bot shut down gracefully");
-    Ok(())
+    // ... join all tasks
 }
 ```
-
-**Task Modules**: Individual task implementations in separate files
 
 ---
 

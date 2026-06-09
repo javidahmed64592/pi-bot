@@ -12,7 +12,7 @@
 //!
 //! 1. **Working Memory** (RAM): Current conversation (configurable size)
 //! 2. **Session Memory** (Disk): All conversations for the current day
-//! 3. **Long-term Memory** (Disk): Extracted facts and user preferences (future)
+//! 3. **Long-term Memory** (Disk): Extracted facts with semantic search (Phase 2.5)
 //!
 //! ## Usage
 //!
@@ -22,9 +22,20 @@
 //!
 //! let config = MemoryConfig {
 //!     session_storage: "data/sessions/".to_string(),
-//!     long_term_storage: "data/memories.json".to_string(),
+//!     long_term_storage: "data/memory/".to_string(),
 //!     max_short_term: 10,
 //!     fact_extraction_enabled: false,
+//!     embeddings: Some(EmbeddingsConfig {
+//!         model_path: "models/embeddings/all-MiniLM-L6-v2.onnx".to_string(),
+//!         tokenizer_path: "models/embeddings/all-MiniLM-L6-v2_tokenizer.json".to_string(),
+//!         dimensions: 384,
+//!         enabled: true,
+//!     }),
+//!     search: SearchConfig {
+//!         top_k: 5,
+//!         min_similarity: 0.7,
+//!         max_facts: 1000,
+//!     },
 //! };
 //!
 //! let mut memory = MemoryService::new(config).expect("Failed to init memory");
@@ -32,18 +43,25 @@
 //! // Add conversation exchanges
 //! memory.add_exchange("Hello!", "Hi there! How can I help?");
 //!
-//! // Get context for LLM (respects max_short_term limit)
-//! let context = memory.get_context();
+//! // Add facts manually
+//! memory.add_fact("User likes coffee").await.unwrap();
+//!
+//! // Search for relevant facts
+//! let facts = memory.search_facts("What drinks do I like?", 5, 0.7).await.unwrap();
 //! ```
 
 use anyhow::{Context, Result};
 use bot_core::config::MemoryConfig;
-use chrono::{Local, NaiveDate};
+use chrono::{Local, NaiveDate, Utc};
 use log::{debug, info, warn};
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
 use std::io::{BufReader, BufWriter};
 use std::path::{Path, PathBuf};
+
+use uuid::Uuid;
+
+use crate::embedding_service::{cosine_similarity, EmbeddingService};
 
 // Re-export Message type for convenience
 pub use crate::llm_service::Message;
@@ -95,12 +113,125 @@ impl Session {
 }
 
 // ============================================================================
+// Long-term Memory Types (Phase 2.5)
+// ============================================================================
+
+/// Source of a fact (how it was obtained)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum FactSource {
+    /// User explicitly told the bot
+    UserTold,
+
+    /// Extracted from conversation
+    Conversation,
+
+    /// Inferred from observations
+    Observation,
+
+    /// From environmental sensors
+    Environmental,
+}
+
+/// A single fact stored in long-term memory with semantic embedding
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Fact {
+    /// Unique identifier
+    pub id: String,
+
+    /// Raw fact text (e.g., "User likes coffee")
+    pub text: String,
+
+    /// 384-dimensional embedding vector for semantic search
+    pub embedding: Vec<f32>,
+
+    /// When the fact was created
+    #[serde(with = "chrono::serde::ts_seconds")]
+    pub timestamp: chrono::DateTime<Utc>,
+
+    /// How the fact was obtained
+    pub source: FactSource,
+
+    /// Optional category for organization
+    pub category: Option<String>,
+
+    /// How many times this fact has been retrieved
+    pub relevance_count: u32,
+
+    /// Confidence in fact accuracy (0.0-1.0)
+    pub confidence: f32,
+}
+
+impl Fact {
+    /// Create a new fact with embedding
+    pub fn new(
+        text: String,
+        embedding: Vec<f32>,
+        source: FactSource,
+        category: Option<String>,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            text,
+            embedding,
+            timestamp: Utc::now(),
+            source,
+            category,
+            relevance_count: 0,
+            confidence: 1.0,
+        }
+    }
+}
+
+/// Long-term memory database containing all facts
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FactDatabase {
+    /// All stored facts
+    pub facts: Vec<Fact>,
+
+    /// Metadata about the database
+    pub metadata: FactDatabaseMetadata,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FactDatabaseMetadata {
+    /// Total number of facts
+    pub total_facts: usize,
+
+    /// Last updated timestamp
+    pub last_updated: String,
+
+    /// Embedding model used
+    pub embedding_model: String,
+}
+
+impl FactDatabase {
+    /// Create a new empty fact database
+    fn new() -> Self {
+        Self {
+            facts: Vec::new(),
+            metadata: FactDatabaseMetadata {
+                total_facts: 0,
+                last_updated: Utc::now().to_rfc3339(),
+                embedding_model: "all-MiniLM-L6-v2".to_string(),
+            },
+        }
+    }
+
+    /// Update metadata
+    fn update_metadata(&mut self) {
+        self.metadata.total_facts = self.facts.len();
+        self.metadata.last_updated = Utc::now().to_rfc3339();
+    }
+}
+
+// ============================================================================
 // MemoryService - Conversation Memory Management
 // ============================================================================
 
 /// Memory service for managing conversation history
 ///
-/// Handles both short-term (RAM) and persistent (disk) memory.
+/// Handles short-term (RAM), session (disk), and semantic long-term memory.
 /// Automatically saves sessions to daily JSON files.
 pub struct MemoryService {
     config: MemoryConfig,
@@ -116,6 +247,15 @@ pub struct MemoryService {
 
     /// Path to today's session file
     session_file_path: PathBuf,
+
+    /// Long-term semantic memory (facts with embeddings)
+    fact_database: FactDatabase,
+
+    /// Path to fact database JSON file
+    facts_file_path: PathBuf,
+
+    /// Embedding service for semantic search (optional)
+    embedder: Option<EmbeddingService>,
 }
 
 impl MemoryService {
@@ -133,7 +273,9 @@ impl MemoryService {
     ///
     /// - Creates storage directories if they don't exist
     /// - Loads today's session from disk if available
-    /// - Initializes empty session if no existing session found
+    /// - Loads fact database from disk if available
+    /// - Initializes embedding service if configured
+    /// - Initializes empty session/database if no existing data found
     pub fn new(config: MemoryConfig) -> Result<Self> {
         info!("Initializing memory service");
 
@@ -141,9 +283,17 @@ impl MemoryService {
         let session_dir = PathBuf::from(&config.session_storage);
         fs::create_dir_all(&session_dir).context("Failed to create session storage directory")?;
 
+        // Create long-term storage directory
+        let long_term_dir = PathBuf::from(&config.long_term_storage);
+        fs::create_dir_all(&long_term_dir)
+            .context("Failed to create long-term storage directory")?;
+
         // Determine today's session file path
         let today = Local::now().format("%Y-%m-%d").to_string();
         let session_file_path = session_dir.join(format!("{}.json", today));
+
+        // Determine facts file path
+        let facts_file_path = long_term_dir.join("facts.json");
 
         // Load or create today's session
         let current_session = if session_file_path.exists() {
@@ -158,7 +308,7 @@ impl MemoryService {
         };
 
         // Initialize short-term memory with recent exchanges from session
-        let short_term: Vec<Exchange> = current_session
+        let mut short_term: Vec<Exchange> = current_session
             .exchanges
             .iter()
             .rev() // Most recent first
@@ -167,10 +317,62 @@ impl MemoryService {
             .cloned()
             .collect();
 
+        // Cross-day continuity: when today's session is brand new, seed short-term
+        // with a handful of exchanges from the most recent previous session so the bot
+        // doesn't lose the thread of yesterday's conversation cold.
+        if current_session.exchanges.is_empty() {
+            if let Some(carry) = Self::load_recent_previous_exchanges(&session_dir, 3) {
+                if !carry.is_empty() {
+                    info!(
+                        "Seeding short-term with {} exchanges from previous session for context continuity",
+                        carry.len()
+                    );
+                    short_term = carry;
+                }
+            }
+        }
+
+        // Load or create fact database
+        let fact_database = if facts_file_path.exists() {
+            info!("Loading fact database: {}", facts_file_path.display());
+            Self::load_fact_database(&facts_file_path).unwrap_or_else(|e| {
+                warn!("Failed to load fact database, starting fresh: {}", e);
+                FactDatabase::new()
+            })
+        } else {
+            info!("Creating new fact database");
+            FactDatabase::new()
+        };
+
+        // Initialize embedding service if configured
+        let embedder = if let Some(ref emb_config) = config.embeddings {
+            if emb_config.enabled {
+                info!("Initializing embedding service");
+                match EmbeddingService::new(&emb_config.model_path, &emb_config.tokenizer_path) {
+                    Ok(embedder) => {
+                        info!("Embedding service initialized");
+                        Some(embedder)
+                    }
+                    Err(e) => {
+                        warn!("Failed to initialize embedding service: {}", e);
+                        warn!("Semantic memory will be disabled");
+                        None
+                    }
+                }
+            } else {
+                info!("Embedding service disabled in config");
+                None
+            }
+        } else {
+            info!("No embeddings config found, semantic memory disabled");
+            None
+        };
+
         info!(
-            "Memory initialized: {} exchanges in session, {} in short-term",
+            "Memory initialized: {} exchanges in session, {} in short-term, {} facts",
             current_session.exchanges.len(),
-            short_term.len()
+            short_term.len(),
+            fact_database.facts.len()
         );
 
         Ok(Self {
@@ -179,6 +381,9 @@ impl MemoryService {
             current_session,
             session_dir,
             session_file_path,
+            fact_database,
+            facts_file_path,
+            embedder,
         })
     }
 
@@ -385,12 +590,363 @@ impl MemoryService {
     /// Formatted string with memory usage stats
     pub fn stats(&self) -> String {
         format!(
-            "Short-term: {}/{} exchanges | Session: {} exchanges | Date: {}",
+            "Short-term: {}/{} exchanges | Session: {} exchanges | Facts: {} | Date: {}",
             self.short_term.len(),
             self.config.max_short_term,
             self.current_session.exchanges.len(),
+            self.fact_database.facts.len(),
             self.current_session.date
         )
+    }
+
+    // ========================================================================
+    // Long-term Semantic Memory (Phase 2.5)
+    // ========================================================================
+
+    /// Add a fact to long-term memory with embedding
+    ///
+    /// # Arguments
+    ///
+    /// * `text` - Fact text (e.g., "User likes coffee")
+    /// * `source` - How the fact was obtained
+    /// * `category` - Optional category for organization
+    ///
+    /// # Returns
+    ///
+    /// Result containing the created Fact or error
+    ///
+    /// # Behavior
+    ///
+    /// - Generates embedding for the fact text
+    /// - Checks for duplicates (high similarity)
+    /// - Stores fact in database
+    /// - Automatically saves database to disk
+    pub async fn add_fact(
+        &mut self,
+        text: impl Into<String>,
+        source: FactSource,
+        category: Option<String>,
+    ) -> Result<Fact> {
+        let text = text.into();
+
+        debug!("Adding fact to long-term memory: {}", text);
+
+        // Check if embedding service is available
+        let embedder = self
+            .embedder
+            .as_mut()
+            .context("Embedding service not available")?;
+
+        // Generate embedding
+        let embedding = embedder
+            .embed(&text)
+            .context("Failed to generate embedding")?;
+
+        // Check for duplicate facts
+        if let Some(similar) = self.find_similar_fact(&embedding, 0.9)? {
+            info!(
+                "Fact already exists (similarity={:.2}): {}",
+                similar.1, similar.0.text
+            );
+            return Ok(similar.0);
+        }
+
+        // Create and store fact
+        let fact = Fact::new(text, embedding, source, category);
+
+        self.fact_database.facts.push(fact.clone());
+        self.fact_database.update_metadata();
+
+        // Save to disk
+        self.save_fact_database()?;
+
+        info!("Fact added: {}", fact.text);
+
+        Ok(fact)
+    }
+
+    /// Search for facts using semantic similarity
+    ///
+    /// # Arguments
+    ///
+    /// * `query` - Search query text
+    /// * `top_k` - Number of top results to return
+    /// * `min_similarity` - Minimum cosine similarity threshold (0.0-1.0)
+    ///
+    /// # Returns
+    ///
+    /// Result containing vector of (Fact, similarity_score) tuples, sorted by relevance
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// let results = memory.search_facts("What drinks do I like?", 5, 0.7).await?;
+    /// for (fact, score) in results {
+    ///     println!("{} (score: {:.2})", fact.text, score);
+    /// }
+    /// ```
+    pub async fn search_facts(
+        &mut self,
+        query: &str,
+        top_k: usize,
+        min_similarity: f32,
+    ) -> Result<Vec<(Fact, f32)>> {
+        debug!("Searching facts for: {}", query);
+
+        // Check if embedding service is available
+        let embedder = self
+            .embedder
+            .as_mut()
+            .context("Embedding service not available")?;
+
+        // Generate query embedding
+        let query_embedding = embedder
+            .embed(query)
+            .context("Failed to generate query embedding")?;
+
+        // Compute similarities with all facts
+        let mut scored_facts: Vec<(Fact, f32)> = self
+            .fact_database
+            .facts
+            .iter()
+            .map(|fact| {
+                let similarity = cosine_similarity(&query_embedding, &fact.embedding);
+                (fact.clone(), similarity)
+            })
+            .filter(|(_, score)| *score >= min_similarity)
+            .collect();
+
+        // Sort by similarity (descending)
+        scored_facts.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Take top K
+        let results: Vec<(Fact, f32)> = scored_facts.into_iter().take(top_k).collect();
+
+        // Increment relevance counters for retrieved facts
+        for (fact, _) in &results {
+            if let Some(stored_fact) = self
+                .fact_database
+                .facts
+                .iter_mut()
+                .find(|f| f.id == fact.id)
+            {
+                stored_fact.relevance_count += 1;
+            }
+        }
+
+        // Save updated relevance counts
+        if !results.is_empty() {
+            self.save_fact_database()?;
+        }
+
+        debug!("Found {} relevant facts", results.len());
+
+        Ok(results)
+    }
+
+    /// Find a similar fact in the database
+    ///
+    /// Used for deduplication when adding new facts.
+    fn find_similar_fact(
+        &self,
+        embedding: &[f32],
+        min_similarity: f32,
+    ) -> Result<Option<(Fact, f32)>> {
+        let mut best_match: Option<(Fact, f32)> = None;
+
+        for fact in &self.fact_database.facts {
+            let similarity = cosine_similarity(embedding, &fact.embedding);
+
+            if similarity >= min_similarity {
+                if let Some((_, best_score)) = &best_match {
+                    if similarity > *best_score {
+                        best_match = Some((fact.clone(), similarity));
+                    }
+                } else {
+                    best_match = Some((fact.clone(), similarity));
+                }
+            }
+        }
+
+        Ok(best_match)
+    }
+
+    /// Get all facts in the database
+    pub fn get_all_facts(&self) -> &[Fact] {
+        &self.fact_database.facts
+    }
+
+    /// Get number of facts in long-term memory
+    pub fn fact_count(&self) -> usize {
+        self.fact_database.facts.len()
+    }
+
+    /// Remove a fact by ID
+    pub fn remove_fact(&mut self, fact_id: &str) -> Result<()> {
+        let initial_len = self.fact_database.facts.len();
+
+        self.fact_database.facts.retain(|f| f.id != fact_id);
+
+        if self.fact_database.facts.len() < initial_len {
+            self.fact_database.update_metadata();
+            self.save_fact_database()?;
+            info!("Fact removed: {}", fact_id);
+            Ok(())
+        } else {
+            anyhow::bail!("Fact not found: {}", fact_id)
+        }
+    }
+
+    /// Save fact database to disk
+    fn save_fact_database(&self) -> Result<()> {
+        debug!(
+            "Saving fact database to: {}",
+            self.facts_file_path.display()
+        );
+
+        let file = File::create(&self.facts_file_path).context("Failed to create facts file")?;
+        let writer = BufWriter::new(file);
+
+        serde_json::to_writer_pretty(writer, &self.fact_database)
+            .context("Failed to serialize fact database")?;
+
+        debug!("Fact database saved successfully");
+        Ok(())
+    }
+
+    /// Load fact database from disk
+    fn load_fact_database(path: &Path) -> Result<FactDatabase> {
+        let file = File::open(path)
+            .with_context(|| format!("Failed to open fact database: {}", path.display()))?;
+        let reader = BufReader::new(file);
+
+        let database: FactDatabase =
+            serde_json::from_reader(reader).context("Failed to deserialize fact database")?;
+
+        Ok(database)
+    }
+
+    /// Check if semantic memory is enabled
+    pub fn has_semantic_memory(&self) -> bool {
+        self.embedder.is_some()
+    }
+
+    // ========================================================================
+    // Context Augmentation
+    // ========================================================================
+
+    /// Get conversation context for LLM, augmented with relevant long-term facts.
+    ///
+    /// Performs a semantic search for facts relevant to `query` and, when found,
+    /// prepends them as a system message so the LLM can reference them naturally.
+    ///
+    /// Falls back to plain `get_context()` when semantic memory is unavailable
+    /// or the search yields no results.
+    ///
+    /// # Arguments
+    ///
+    /// * `query` - The user's message (used as the search query for fact retrieval)
+    ///
+    /// # Returns
+    ///
+    /// Ordered `Vec<Message>` ready to pass to `LlmService::generate()`.
+    pub async fn get_context_with_facts(&mut self, query: &str) -> Vec<Message> {
+        let mut messages = self.get_context();
+
+        if !self.has_semantic_memory() {
+            return messages;
+        }
+
+        let top_k = self.config.search.top_k;
+        let min_similarity = self.config.search.min_similarity;
+
+        match self.search_facts(query, top_k, min_similarity).await {
+            Ok(facts) if !facts.is_empty() => {
+                let fact_lines: String = facts
+                    .iter()
+                    .map(|(f, score)| format!("- {} [confidence: {:.0}%]", f.text, score * 100.0))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+
+                let fact_message = Message::system(format!(
+                    "Relevant facts about the user retrieved from long-term memory:\n{}",
+                    fact_lines
+                ));
+
+                // Insert before the conversation history so the model sees facts as context
+                messages.insert(0, fact_message);
+                debug!("Injected {} relevant facts into LLM context", facts.len());
+            }
+            Ok(_) => {
+                debug!("No relevant facts found for query");
+            }
+            Err(e) => {
+                warn!("Fact retrieval failed, continuing without facts: {}", e);
+            }
+        }
+
+        messages
+    }
+
+    // ========================================================================
+    // Cross-Day Context
+    // ========================================================================
+
+    /// Load the most recent N exchanges from the latest previous session.
+    ///
+    /// Used on startup to seed short-term memory when today's session is empty,
+    /// giving the bot conversational continuity from yesterday.
+    ///
+    /// # Arguments
+    ///
+    /// * `session_dir` - Directory containing daily session files
+    /// * `count` - Maximum number of exchanges to carry forward
+    ///
+    /// # Returns
+    ///
+    /// `Some(exchanges)` if a previous session exists and has content, else `None`
+    fn load_recent_previous_exchanges(session_dir: &Path, count: usize) -> Option<Vec<Exchange>> {
+        let today = Local::now().format("%Y-%m-%d").to_string();
+
+        // Collect all session dates that are not today
+        let mut dates: Vec<String> = fs::read_dir(session_dir)
+            .ok()?
+            .filter_map(|e| e.ok())
+            .filter_map(|e| {
+                let path = e.path();
+                if path.extension().and_then(|s| s.to_str()) != Some("json") {
+                    return None;
+                }
+                path.file_stem()
+                    .and_then(|s| s.to_str())
+                    .filter(|stem| {
+                        *stem != today && NaiveDate::parse_from_str(stem, "%Y-%m-%d").is_ok()
+                    })
+                    .map(|s| s.to_string())
+            })
+            .collect();
+
+        dates.sort();
+
+        let most_recent = dates.last()?;
+        let prev_file = session_dir.join(format!("{}.json", most_recent));
+
+        let prev_session = Self::load_session_from_file(&prev_file).ok()?;
+
+        if prev_session.exchanges.is_empty() {
+            return None;
+        }
+
+        let carry: Vec<Exchange> = prev_session
+            .exchanges
+            .iter()
+            .rev()
+            .take(count)
+            .rev()
+            .cloned()
+            .collect();
+
+        Some(carry)
     }
 }
 
@@ -414,6 +970,12 @@ mod tests {
                 .to_string(),
             max_short_term: 3,
             fact_extraction_enabled: false,
+            embeddings: None,
+            search: bot_core::config::SearchConfig {
+                top_k: 5,
+                min_similarity: 0.7,
+                max_facts: 1000,
+            },
         }
     }
 

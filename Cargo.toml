@@ -41,4 +41,12 @@ anyhow = "1.0"
 thiserror = "1.0"
 
 # Time utilities
-chrono = "0.4"
+chrono = { version = "0.4", features = ["serde"] }
+
+# UUID generation
+uuid = { version = "1.0", features = ["v4", "serde"] }
+
+# ONNX Runtime for embeddings
+ort = "2.0.0-rc.12"
+ndarray = "0.17"
+tokenizers = "0.23"

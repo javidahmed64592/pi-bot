@@ -11,6 +11,7 @@ This document defines Pi Bot's state model that separates **conversation behavio
 3. **Bot-Initiated Speech**: Observing → Active(Speaking) directly (bot speaks first, doesn't wait for user)
 4. **Always Responsive**: Bot responds to wake word even in Silent mode (just more concisely)
 5. **Active Overrides Ambient**: Conversation states always show state-based colors, even if ambient lighting is configured
+6. **Controller Owns LED State**: The AI controller is the sole authority over all LED state; nothing else writes to LEDs
 
 ## Core Insight
 
@@ -25,6 +26,32 @@ This allows flexible combinations like:
 - Ambient lighting while bot stays silent (bedtime scenario)
 - State-based lighting during conversation (default)
 - Minimal lighting during meetings
+
+---
+
+## System Startup & Loading State
+
+Before the bot enters any conversation state, it goes through a **startup phase** where hardware components initialise one by one.
+
+### Visual Indicators
+
+| Phase | RGB LED | Green LEDs | Red LEDs |
+|-------|---------|------------|----------|
+| **App start → actuators ready** | Red breathing (dim) | Off | Breathing |
+| **Actuators ready → sensors ready** | Red breathing | Off | Breathing |
+| **All components ready (Ready state)** | Config-defined pattern | Solid | Off |
+| **Shutdown** | Off | Off | Off |
+
+### Startup Sequence
+
+1. Runner spawns controller + command distributor
+2. Runner spawns actuators (RGB/Green/Red LEDs, Speaker, LCD)
+   - Each actuator defaults to its loading visual immediately on init
+   - Each sends `ComponentReady` to the controller when hardware is ready
+3. Controller receives 5 × `ComponentReady` → sends loading-state commands
+4. Runner spawns sensors (PIR, Audio/Vosk)
+   - Each sends `ComponentReady` when ready (Vosk loading takes ~10-30s)
+5. Controller receives all 7 × `ComponentReady` → transitions to `Ready` state
 
 ---
 
@@ -54,15 +81,21 @@ These determine **what the bot does** (when it talks, when it listens, when it's
 **What it means**: Bot noticed something interesting and is deciding whether to speak
 
 **Behavior**:
-- Evaluates context (user busy? appropriate time? presence?)
-- Decides whether to initiate conversation
-- If yes: generates observation-based opener → Active(Speaking)
-- If no: returns to Ready
+- Triggered by a randomly-chosen timer (configured via `behavior.passive_observation_interval`)
+- Collects `ObservationContext`: presence duration, time of day, minutes since last interaction, recent memory facts
+- Applies a weighted probability to decide whether to speak:
+  - Base probability: 20%
+  - +10% per 30 minutes of continuous presence (max +40%)
+  - +10% per 15 minutes without talking (max +30%)
+  - Hard ceiling: 90%
+- If yes: generates a conversation opener via LLM → `Active(Thinking → Learning → Speaking)`
+- If no: returns silently to `Ready` (a new timer is scheduled on the next tick)
+- Never triggers if user is not present (PIR must be detecting presence)
 
-**Duration**: Brief (2-5 seconds max)
+**Duration**: Brief — LLM generation time only (~2-10s on Pi 5)
 
 **Transitions**:
-- → **Active(Speaking)**: Bot decides to speak (generates greeting/observation)
+- → **Active(Thinking)**: Bot decides to speak (generates opener via LLM)
 - → **Ready**: Bot decides not to speak
 
 **LED hint**: Blue breathing (if StateBased), otherwise ambient pattern continues
@@ -81,8 +114,8 @@ Listening → Thinking → Learning → Speaking → Ready
 
 **If bot initiated (Observing)**:
 ```
-Speaking → Ready
-(Bot speaks its observation, then waits for wake word to continue)
+Thinking → Learning → Speaking → Ready
+(Bot generates an opener, speaks it, then returns to Ready and waits for wake word)
 ```
 
 **Sub-state details**:

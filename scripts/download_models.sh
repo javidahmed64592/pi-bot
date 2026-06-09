@@ -40,6 +40,7 @@ fi
 # Create models directory structure
 mkdir -p "${VOSK_DIR_BASE}"
 mkdir -p "${PIPER_DIR_BASE}"
+mkdir -p "${MODELS_DIR}/embeddings"
 
 echo -e "Reading configuration from: ${BLUE}${CONFIG_FILE}${NC}"
 echo -e "Vosk and Piper models will be downloaded to: ${BLUE}${MODELS_DIR}${NC}"
@@ -139,9 +140,65 @@ fi
 echo
 
 # ========================================
+# Sentence Transformer Embedding Model
+# ========================================
+echo "3. Downloading Embedding Model from config"
+echo
+
+# Extract embedding model path from config
+EMBEDDING_MODEL_PATH=$(grep -A 5 'embeddings:' "${CONFIG_FILE}" | grep 'model_path:' | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
+
+if [ -z "${EMBEDDING_MODEL_PATH}" ]; then
+    echo -e "   ${RED}✗${NC} Could not find embedding model_path in ${BLUE}config.yaml${NC}"
+    echo "   Skipping embedding model download"
+else
+    # Extract model name from path (e.g., "models/embeddings/all-MiniLM-L6-v2.onnx" -> "all-MiniLM-L6-v2")
+    EMBEDDINGS_MODEL=$(basename "${EMBEDDING_MODEL_PATH}" .onnx)
+    EMBEDDINGS_DIR="${MODELS_DIR}/embeddings"
+    ONNX_FILE="${PROJECT_ROOT}/${EMBEDDING_MODEL_PATH}"
+    TOKENIZER_FILE="${EMBEDDINGS_DIR}/${EMBEDDINGS_MODEL}_tokenizer.json"
+
+    echo -e "   Model from config: ${GREEN}${EMBEDDINGS_MODEL}${NC}"
+
+    if [ -f "${ONNX_FILE}" ] && [ -f "${TOKENIZER_FILE}" ]; then
+        echo -e "   ${GREEN}✓${NC} Embedding model already exists at: ${BLUE}${ONNX_FILE}${NC}"
+    else
+        echo "   Downloading ${GREEN}${EMBEDDINGS_MODEL}${NC} from Hugging Face..."
+        echo "   This model will be used for semantic memory search"
+        echo
+
+        # Download ONNX model and tokenizer using Hugging Face Hub
+        echo "   Downloading ONNX model..."
+        wget -O "${ONNX_FILE}" "https://huggingface.co/sentence-transformers/${EMBEDDINGS_MODEL}/resolve/main/onnx/model.onnx" || {
+            echo -e "   ${RED}✗${NC} Failed to download ONNX model from Hugging Face"
+            echo "   You may need to convert the model manually. See docs/MEMORY_SYSTEM.md"
+            echo "   Skipping embedding model for now..."
+            ONNX_FILE=""
+        }
+
+        if [ -n "${ONNX_FILE}" ]; then
+            echo "   Downloading tokenizer..."
+            wget -O "${TOKENIZER_FILE}" "https://huggingface.co/sentence-transformers/${EMBEDDINGS_MODEL}/resolve/main/tokenizer.json" || {
+                echo -e "   ${YELLOW}⚠${NC}  Failed to download tokenizer, trying alternative..."
+                wget -O "${TOKENIZER_FILE}" "https://huggingface.co/sentence-transformers/${EMBEDDINGS_MODEL}/resolve/main/tokenizer_config.json" || {
+                    echo -e "   ${RED}✗${NC} Failed to download tokenizer"
+                    echo "   You may need to download manually from: "
+                    echo -e "   ${BLUE}https://huggingface.co/sentence-transformers/${EMBEDDINGS_MODEL}${NC}"
+                }
+            }
+
+            echo -e "   ${GREEN}✓${NC} Embedding model installed successfully"
+            echo -e "   Model path: ${BLUE}${ONNX_FILE}${NC}"
+        fi
+    fi
+fi
+
+echo
+
+# ========================================
 # Ollama LLM Model
 # ========================================
-echo "3. Downloading Ollama LLM Model from config"
+echo "4. Downloading Ollama LLM Model from config"
 echo
 
 # Check if Ollama is installed and running
@@ -183,9 +240,10 @@ echo -e "${GREEN}✓${NC} Downloads complete!"
 echo ${SEPARATOR}
 echo
 echo "Models:"
-echo -e "  Vosk:  ${GREEN}${VOSK_MODEL}${NC}"
-echo -e "  Piper: ${GREEN}${PIPER_VOICE}${NC}"
-echo -e "  LLM:   ${GREEN}${LLM_MODEL}${NC}"
+echo -e "  Vosk:       ${GREEN}${VOSK_MODEL}${NC}"
+echo -e "  Piper:      ${GREEN}${PIPER_VOICE}${NC}"
+echo -e "  Embeddings: ${GREEN}${EMBEDDINGS_MODEL}${NC} (ONNX)"
+echo -e "  LLM:        ${GREEN}${LLM_MODEL}${NC}"
 echo
 echo "You can now run the system with:"
 echo -e "  ${GREEN}cargo run --bin runner${NC}"

@@ -31,6 +31,7 @@ pub async fn run_speaker_actuator(
     config: &SystemConfig,
     mut command_rx: mpsc::Receiver<Command>,
     event_tx: mpsc::Sender<Event>,
+    startup_tx: mpsc::Sender<(String, bool)>,
     mut shutdown_rx: broadcast::Receiver<()>,
 ) -> Result<()> {
     log::info!("[Speaker Actuator Task] Starting...");
@@ -46,6 +47,14 @@ pub async fn run_speaker_actuator(
         config.audio.piper.voice
     );
 
+    // Signal runner that this component is ready
+    if let Err(e) = startup_tx.send(("speaker".to_string(), true)).await {
+        log::warn!(
+            "[Speaker Actuator Task] Failed to send startup signal: {}",
+            e
+        );
+    }
+
     loop {
         tokio::select! {
             // Receive commands
@@ -57,6 +66,11 @@ pub async fn run_speaker_actuator(
                         // Generate audio with Piper TTS
                         match tts.synthesize(&text).await {
                             Ok(audio_data) => {
+                                // Notify controller that playback is starting
+                                if let Err(e) = event_tx.send(Event::SpeechPlaybackStarted).await {
+                                    log::error!("[Speaker Actuator Task] Failed to send SpeechPlaybackStarted event: {}", e);
+                                }
+
                                 // Play audio through speaker
                                 if let Err(e) = speaker.play(&audio_data) {
                                     log::error!("[Speaker Actuator Task] Failed to play audio: {}", e);

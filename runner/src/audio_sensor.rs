@@ -44,7 +44,7 @@ pub async fn run_audio_sensor(
     event_tx: mpsc::Sender<Event>,
     mut cmd_rx: mpsc::Receiver<AudioSensorCommand>,
     mut shutdown_rx: broadcast::Receiver<()>,
-    ready_tx: mpsc::Sender<()>,
+    startup_tx: mpsc::Sender<(String, bool)>,
 ) -> Result<()> {
     log::info!("[Audio Sensor Task] Starting...");
 
@@ -68,6 +68,13 @@ pub async fn run_audio_sensor(
             Ok(a) => a,
             Err(e) => {
                 log::error!("[Audio Sensor Task] Failed to initialize: {}", e);
+                // Signal failure so runner can proceed (degraded mode)
+                if startup_tx
+                    .blocking_send(("audio".to_string(), false))
+                    .is_err()
+                {
+                    log::error!("[Audio Sensor Task] Failed to send startup failure signal");
+                }
                 return;
             }
         };
@@ -75,6 +82,12 @@ pub async fn run_audio_sensor(
         // Start listening for wake word
         if let Err(e) = audio.start() {
             log::error!("[Audio Sensor Task] Failed to start: {}", e);
+            if startup_tx
+                .blocking_send(("audio".to_string(), false))
+                .is_err()
+            {
+                log::error!("[Audio Sensor Task] Failed to send startup failure signal");
+            }
             return;
         }
 
@@ -83,16 +96,16 @@ pub async fn run_audio_sensor(
             config.audio.vosk.wake_phrase
         );
 
-        // Send SystemReady event to indicate heavy initialization (Vosk loading) is complete
-        if event_tx.blocking_send(Event::SystemReady).is_err() {
-            log::error!("[Audio Sensor Task] Failed to send SystemReady event");
+        // Signal runner that Vosk has finished loading and the sensor is ready.
+        // The runner forwards this as Event::ComponentReady { component: "audio" }
+        // to the controller, which transitions the LEDs from loading to ready.
+        if startup_tx
+            .blocking_send(("audio".to_string(), true))
+            .is_err()
+        {
+            log::error!("[Audio Sensor Task] Failed to send startup signal");
         } else {
-            log::info!("[Audio Sensor Task] System ready - Vosk model loaded");
-        }
-
-        // Notify runner that system is ready
-        if ready_tx.blocking_send(()).is_err() {
-            log::error!("[Audio Sensor Task] Failed to send ready notification");
+            log::info!("[Audio Sensor Task] Vosk model loaded — audio sensor ready");
         }
 
         // Poll interval (check every 50ms for low latency)
