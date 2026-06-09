@@ -184,24 +184,21 @@ rgb_led_patterns:
 
 # Status LED Patterns (single-color LEDs, pattern only)
 status_led_patterns:
-  "off":
-    pattern: "off"
-    interval: 0.0
-  "loading":
+  loading:
     pattern: "pulse"
-    interval: 3.0
-  "ready":
+    interval: 2.0
+  ready:
     pattern: "solid"
     interval: 0.0
-  "observing":
+  observing:
     pattern: "pulse"
-    interval: 3.0
-  "silent":
+    interval: 2.0
+  silent:
     pattern: "pulse"
-    interval: 5.0
-  "active":
+    interval: 4.0
+  active:
     pattern: "solid"
     interval: 0.0
-  "error":
+  error:
     pattern: "blink"
     interval: 0.5
