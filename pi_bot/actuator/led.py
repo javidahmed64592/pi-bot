@@ -158,4 +158,4 @@ def debug(led_pins_config: LEDPinsConfig, status_led_config: StatusLEDStateConfi
     sleep(on_time)
 
     turn_off_all()
-    logger.info("Status LED pattern test completed!")
+    logger.info("Status LED tests complete!")

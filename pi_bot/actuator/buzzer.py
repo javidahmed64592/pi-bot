@@ -89,4 +89,4 @@ def debug(buzzer_pin: int, buzzer_tunes_config: BuzzerTunesConfig) -> None:  # n
     logger.info("5/5 - Error Tune")
     buzzer.play_tune(buzzer_tunes_config.error_tune)
 
-    logger.info("Buzzer tune tests completed.")
+    logger.info("Buzzer tune tests complete!")

@@ -197,4 +197,4 @@ def debug(rgb_pins_config: RGBPinsConfig, rgb_led_config: RGBLEDStateConfig) -> 
     sleep(on_time)
 
     turn_off_all()
-    logger.info("RGB LED pattern test completed!")
+    logger.info("RGB LED tests complete!")
