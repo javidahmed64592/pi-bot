@@ -230,12 +230,14 @@ class RGBLEDActiveStateConfig(BaseModel):
 class RGBLEDStateConfig(BaseModel):
     """Configuration for RGB patterns for different bot states."""
 
+    loading: RGBLEDPatternConfig = Field(..., description="LED pattern configuration for the 'loading' state.")
     ready: RGBLEDPatternConfig = Field(..., description="LED pattern configuration for the 'ready' state.")
     observing: RGBLEDPatternConfig = Field(..., description="LED pattern configuration for the 'observing' state.")
     silent: RGBLEDPatternConfig = Field(..., description="LED pattern configuration for the 'silent' state.")
     active: RGBLEDActiveStateConfig = Field(
         ..., description="LED pattern configuration for active conversation sub-states."
     )
+    error: RGBLEDPatternConfig = Field(..., description="LED pattern configuration for the 'error' state.")
 
 
 class StatusLEDStateConfig(BaseModel):

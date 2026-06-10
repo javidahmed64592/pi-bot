@@ -137,6 +137,12 @@ behaviour:
 #   Blue:   [0, 191, 255]  Purple: [191, 0, 255]   Orange: [255, 154, 0]
 #
 rgb_led_patterns:
+  loading:
+    pattern: "pulse"
+    interval: 2.0
+    colours:
+    - {red: 255, green: 154, blue: 0}   # Orange
+
   # Top-level conversation states
   ready:
     pattern: "pulse"
@@ -181,6 +187,12 @@ rgb_led_patterns:
       interval: 0.5
       colours:
       - {red: 191, green: 0, blue: 255}  # Purple
+
+  error:
+    pattern: "blink"
+    interval: 0.5
+    colours:
+    - {red: 255, green: 0, blue: 64}     # Red
 
 # Status LED Patterns (single-color LEDs, pattern only)
 status_led_patterns:
