@@ -5,7 +5,7 @@ from time import sleep
 
 import smbus2 as smbus
 
-from pi_bot.models import LCDConfig, LCDMessageConfig
+from pi_bot.models import LCDConfig, LCDMessageConfig, LCDGPIOConfig
 
 
 logger = logging.getLogger(__name__)
@@ -14,18 +14,16 @@ logger = logging.getLogger(__name__)
 class LCDController:
     """A simple controller for an LCD1602 display via I2C interface."""
 
-    def __init__(self, label: str, address: int, bus_number: int, display_time: int) -> None:  # noqa: FBT001, FBT002
+    def __init__(self, label: str, address: int, bus_number: int) -> None:  # noqa: FBT001, FBT002
         """Initialize the LCD1602 display.
 
         :param str label: Label for the LCD.
         :param int address: I2C address of the LCD.
         :param int bus_number: I2C bus number.
-        :param int display_time: Seconds to display messages on LCD.
         """
         self.label = label
         self.address = address
         self.bus_number = bus_number
-        self.display_time = display_time
         self.bus = smbus.SMBus(self.bus_number)
         self.backlight_enabled = False
         self._initialize_display()
@@ -178,23 +176,23 @@ class LCDController:
             logger.exception("[%s] Error during cleanup!", self.label)
 
 
-def get_lcd_controller(config: LCDConfig) -> LCDController:
+def get_lcd_controller(config: LCDGPIOConfig) -> LCDController:
     """Factory function to create an LCDController instance based on the provided configuration.
 
-    :param LCDConfig config: The configuration for the LCD display, including I2C address and bus number.
+    :param LCDGPIOConfig config: The configuration for the LCD display, including I2C address and bus number.
     :return: An instance of LCDController.
     :rtype: LCDController
     """
     return LCDController(
-        label="LCD", address=config.i2c_address, bus_number=config.bus_number, display_time=config.display_time
+        label="LCD", address=config.i2c_address, bus_number=config.bus_number
     )
 
 
-def debug(config: LCDConfig) -> None:
+def debug(lcd_gpio_config: LCDGPIOConfig, lcd_config: LCDConfig) -> None:
     """Demonstrate LCD1602 functionality."""
     off_time = 3.0
 
-    lcd = get_lcd_controller(config=config)
+    lcd = get_lcd_controller(config=lcd_gpio_config)
 
     # Test LCD display
     logger.info("Testing LCD display...")
@@ -209,20 +207,20 @@ def debug(config: LCDConfig) -> None:
     logger.info("2/4 - Display Startup Message")
     lcd.set_backlight(True)
     sleep(off_time)
-    lcd.write(message=config.startup_message)
-    sleep(lcd.display_time)
+    lcd.write(message=lcd_config.startup_message)
+    sleep(lcd_config.display_time)
     lcd.set_backlight(False)
     sleep(off_time)
 
     logger.info("3/4 - Clear Display")
     lcd.set_backlight(True)
-    sleep(lcd.display_time)
+    sleep(lcd_config.display_time)
     lcd.clear()
     sleep(off_time)
     lcd.set_backlight(False)
+    sleep(off_time)
 
     logger.info("4/4 - Cleanup")
-    sleep(off_time)
     lcd.cleanup()
 
     logger.info("LCD tests complete!")

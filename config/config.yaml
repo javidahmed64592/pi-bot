@@ -17,14 +17,6 @@ gpio:
   lcd:
     i2c_address: 0x27
     bus_number: 1
-    display_time: 4  # seconds to show messages on LCD
-    startup_message:
-      line_1:
-        text: "Pi Bot"
-        column: 0
-      line_2:
-        text: "Starting up..."
-        column: 0
 
 # Audio Configuration
 audio:
@@ -243,3 +235,14 @@ buzzer_tunes:
     - {note: "E", sharp: false, flat: false, octave: 4, duration: 0.3}
     - {note: "None", sharp: false, flat: false, octave: 4, duration: 0.3}
     - {note: "E", sharp: false, flat: false, octave: 4, duration: 0.3}
+
+# LCD Configuration
+lcd:
+  display_time: 4  # seconds to show messages on LCD
+  startup_message:
+    line_1:
+      text: "Pi Bot"
+      column: 0
+    line_2:
+      text: "Starting up..."
+      column: 0

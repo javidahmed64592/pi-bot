@@ -41,13 +41,11 @@ class LCDMessageConfig(BaseModel):
     line_2: LCDLineConfig = Field(..., description="Configuration for the second line of the LCD.")
 
 
-class LCDConfig(BaseModel):
-    """Configuration for the LCD display."""
+class LCDGPIOConfig(BaseModel):
+    """Configuration for the LCD GPIO."""
 
     i2c_address: int = Field(..., description="I2C address for the LCD display.", ge=0x03, le=0x77)
     bus_number: int = Field(..., description="I2C bus number for the LCD display.", ge=0)
-    display_time: int = Field(..., description="Seconds to display messages on LCD.", ge=1, le=60)
-    startup_message: LCDMessageConfig = Field(..., description="Configuration for the startup message on the LCD.")
 
 
 class GPIOConfig(BaseModel):
@@ -60,7 +58,7 @@ class GPIOConfig(BaseModel):
     rgb_pins: RGBPinsConfig = Field(..., description="Configuration for RGB LED pin mappings.")
     led_pins: LEDPinsConfig = Field(..., description="Configuration for status LED pin mappings.")
     buzzer_pin: int = Field(..., description="GPIO pin number for the buzzer.", ge=0, le=27)
-    lcd: LCDConfig = Field(..., description="Configuration for the LCD display.")
+    lcd: LCDGPIOConfig = Field(..., description="Configuration for the LCD display.")
 
 
 # Audio Configuration
@@ -334,6 +332,14 @@ class BuzzerTunesConfig(BaseModel):
         return list(reversed(self.state_up_tune))
 
 
+# LCD Configuration
+class LCDConfig(BaseModel):
+    """Configuration for the LCD display."""
+
+    display_time: int = Field(..., description="Seconds to display messages on LCD.", ge=1, le=60)
+    startup_message: LCDMessageConfig = Field(..., description="Configuration for the startup message on the LCD.")
+
+
 # Main Bot Configuration
 class BotConfig(BaseModel):
     """Main configuration model for the Pi Bot."""
@@ -352,6 +358,7 @@ class BotConfig(BaseModel):
         ..., description="Configuration for patterns for the status LEDs."
     )
     buzzer_tunes: BuzzerTunesConfig = Field(..., description="Configuration for musical tunes to play on the buzzer.")
+    lcd: LCDConfig = Field(..., description="Configuration for the LCD display.")
 
     @classmethod
     def from_yaml(cls, filepath: Path) -> BotConfig:
