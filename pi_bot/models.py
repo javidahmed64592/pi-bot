@@ -26,6 +26,25 @@ class LEDPinsConfig(BaseModel):
     red_1: int = Field(..., description="GPIO pin number for the first red status LED.", ge=0, le=27)
     red_2: int = Field(..., description="GPIO pin number for the second red status LED.", ge=0, le=27)
 
+class LCDLineConfig(BaseModel):
+    """Configuration for a single line of the LCD display."""
+
+    text: str = Field(..., description="Text to display on this line of the LCD.", max_length=16)
+    column: int = Field(..., description="Starting column position for the text (0-15).", ge=0, le=15)
+
+class LCDMessageConfig(BaseModel):
+    """Configuration for messages to display on the LCD."""
+
+    line_1: LCDLineConfig = Field(..., description="Configuration for the first line of the LCD.")
+    line_2: LCDLineConfig = Field(..., description="Configuration for the second line of the LCD.")
+
+class LCDConfig(BaseModel):
+    """Configuration for the LCD display."""
+
+    i2c_address: int = Field(..., description="I2C address for the LCD display.", ge=0x03, le=0x77)
+    bus_number: int = Field(..., description="I2C bus number for the LCD display.", ge=0)
+    display_time: int = Field(..., description="Seconds to display messages on LCD.", ge=1, le=60)
+    startup_message: LCDMessageConfig = Field(..., description="Configuration for the startup message on the LCD.")
 
 class GPIOConfig(BaseModel):
     """Configuration for GPIO pin mappings."""
@@ -37,7 +56,7 @@ class GPIOConfig(BaseModel):
     rgb_pins: RGBPinsConfig = Field(..., description="Configuration for RGB LED pin mappings.")
     led_pins: LEDPinsConfig = Field(..., description="Configuration for status LED pin mappings.")
     buzzer_pin: int = Field(..., description="GPIO pin number for the buzzer.", ge=0, le=27)
-    lcd_i2c_address: int = Field(..., description="I2C address for the LCD display.", ge=0x03, le=0x77)
+    lcd: LCDConfig = Field(..., description="Configuration for the LCD display.")
 
 
 # Audio Configuration
