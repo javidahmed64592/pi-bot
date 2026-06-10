@@ -36,6 +36,7 @@ class GPIOConfig(BaseModel):
     # Actuators (outputs)
     rgb_pins: RGBPinsConfig = Field(..., description="Configuration for RGB LED pin mappings.")
     led_pins: LEDPinsConfig = Field(..., description="Configuration for status LED pin mappings.")
+    buzzer_pin: int = Field(..., description="GPIO pin number for the buzzer.", ge=0, le=27)
     lcd_i2c_address: int = Field(..., description="I2C address for the LCD display.", ge=0x03, le=0x77)
 
 
@@ -251,6 +252,65 @@ class StatusLEDStateConfig(BaseModel):
     error: LEDPatternConfig = Field(..., description="LED pattern configuration for the 'error' state.")
 
 
+# Buzzer Configuration
+class MusicalNote(StrEnum):
+    """Predefined musical notes for the buzzer."""
+
+    C = "C"
+    D = "D"
+    E = "E"
+    F = "F"
+    G = "G"
+    A = "A"
+    B = "B"
+    NONE = "None"
+
+
+class MusicalNoteConfig(BaseModel):
+    """Configuration for musical notes to play on the buzzer."""
+
+    note: MusicalNote = Field(..., description="Musical note to play.")
+    sharp: bool = Field(..., description="Whether the note is sharp (e.g., C#).")
+    flat: bool = Field(..., description="Whether the note is flat (e.g., Db).")
+    octave: int = Field(..., description="Octave number for the musical note.", ge=0, le=8)
+    duration: float = Field(..., description="Duration in seconds to play the note.", ge=0.1, le=10.0)
+
+    @property
+    def accidental(self) -> str:
+        """Get the accidental symbol for the note (sharp, flat, or natural)."""
+        if self.sharp:
+            return "#"
+        if self.flat:
+            return "b"
+
+        return ""
+
+    @property
+    def full_note(self) -> str:
+        """Get the full note name including accidental and octave (e.g., C#4, Db3)."""
+        if self.note == MusicalNote.NONE:
+            return MusicalNote.NONE
+        return f"{self.note}{self.accidental}{self.octave}"
+
+
+class BuzzerTunesConfig(BaseModel):
+    """Configuration for musical tunes to play on the buzzer."""
+
+    startup_tune: list[MusicalNoteConfig] = Field(..., description="Sequence of musical notes for the startup tune.")
+    state_up_tune: list[MusicalNoteConfig] = Field(..., description="Sequence of musical notes for state change tune.")
+    error_tune: list[MusicalNoteConfig] = Field(..., description="Sequence of musical notes for the error tune.")
+
+    @property
+    def shutdown_tune(self) -> list[MusicalNoteConfig]:
+        """Generate a shutdown tune by reversing the startup tune."""
+        return list(reversed(self.startup_tune))
+
+    @property
+    def state_down_tune(self) -> list[MusicalNoteConfig]:
+        """Generate a state down tune by reversing the state up tune."""
+        return list(reversed(self.state_up_tune))
+
+
 # Main Bot Configuration
 class BotConfig(BaseModel):
     """Main configuration model for the Pi Bot."""
@@ -268,6 +328,7 @@ class BotConfig(BaseModel):
     status_led_patterns: StatusLEDStateConfig = Field(
         ..., description="Configuration for patterns for the status LEDs."
     )
+    buzzer_tunes: BuzzerTunesConfig = Field(..., description="Configuration for musical tunes to play on the buzzer.")
 
     @classmethod
     def from_yaml(cls, filepath: Path) -> BotConfig:

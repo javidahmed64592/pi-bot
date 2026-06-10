@@ -13,6 +13,7 @@ gpio:
     green_2: 12
     red_1: 24
     red_2: 25
+  buzzer_pin: 17
   lcd_i2c_address: 0x27
 
 # Audio Configuration
@@ -214,3 +215,21 @@ status_led_patterns:
   error:
     pattern: "blink"
     interval: 0.5
+
+# Buzzer Configuration
+buzzer_tunes:
+  startup_tune:
+    - {note: "C", sharp: false, flat: false, octave: 4, duration: 0.2}
+    - {note: "None", sharp: false, flat: false, octave: 4, duration: 0.1}
+    - {note: "E", sharp: false, flat: false, octave: 4, duration: 0.2}
+    - {note: "None", sharp: false, flat: false, octave: 4, duration: 0.1}
+    - {note: "G", sharp: false, flat: false, octave: 4, duration: 0.2}
+  state_up_tune:
+    - {note: "C", sharp: false, flat: false, octave: 4, duration: 0.2}
+    - {note: "G", sharp: false, flat: false, octave: 4, duration: 0.2}
+  error_tune:
+    - {note: "E", sharp: false, flat: false, octave: 4, duration: 0.3}
+    - {note: "None", sharp: false, flat: false, octave: 4, duration: 0.3}
+    - {note: "E", sharp: false, flat: false, octave: 4, duration: 0.3}
+    - {note: "None", sharp: false, flat: false, octave: 4, duration: 0.3}
+    - {note: "E", sharp: false, flat: false, octave: 4, duration: 0.3}

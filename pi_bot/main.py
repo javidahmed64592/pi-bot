@@ -7,6 +7,7 @@ from template_python.logging_setup import setup_default_logging
 
 from pi_bot.actuator.led import debug as led_debug
 from pi_bot.actuator.rgb_led import debug as rgb_led_debug
+from pi_bot.actuator.buzzer import debug as buzzer_debug
 from pi_bot.config import load_config
 
 setup_default_logging()
@@ -25,7 +26,7 @@ def debug() -> None:
     parser = argparse.ArgumentParser(description="Debug the Pi Bot's components.")
     parser.add_argument(
         "component",
-        choices=["rgb_led", "led"],
+        choices=["rgb_led", "led", "buzzer"],
         help="The component to test",
     )
     args = parser.parse_args()
@@ -37,3 +38,5 @@ def debug() -> None:
             rgb_led_debug(rgb_pins_config=config.gpio.rgb_pins, rgb_led_config=config.rgb_led_patterns)
         case "led":
             led_debug(led_pins_config=config.gpio.led_pins, status_led_config=config.status_led_patterns)
+        case "buzzer":
+            buzzer_debug(buzzer_pin=config.gpio.buzzer_pin, buzzer_tunes_config=config.buzzer_tunes)
