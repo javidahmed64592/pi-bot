@@ -88,8 +88,8 @@ class RGBLEDController:
                 self.off()
             case LEDPattern.SOLID:
                 logger.info("[%s] Applying LED pattern: SOLID", self.label)
-                self.set_colour(colour=pattern_config.colours[0])
                 self.on()
+                self.set_colour(colour=pattern_config.colours[0])
             case LEDPattern.PULSE:
                 logger.info("[%s] Applying LED pattern: PULSE", self.label)
                 self.pulse(interval=pattern_config.interval, colour=pattern_config.colours[0])
