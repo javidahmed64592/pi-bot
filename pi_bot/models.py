@@ -26,17 +26,20 @@ class LEDPinsConfig(BaseModel):
     red_1: int = Field(..., description="GPIO pin number for the first red status LED.", ge=0, le=27)
     red_2: int = Field(..., description="GPIO pin number for the second red status LED.", ge=0, le=27)
 
+
 class LCDLineConfig(BaseModel):
     """Configuration for a single line of the LCD display."""
 
     text: str = Field(..., description="Text to display on this line of the LCD.", max_length=16)
     column: int = Field(..., description="Starting column position for the text (0-15).", ge=0, le=15)
 
+
 class LCDMessageConfig(BaseModel):
     """Configuration for messages to display on the LCD."""
 
     line_1: LCDLineConfig = Field(..., description="Configuration for the first line of the LCD.")
     line_2: LCDLineConfig = Field(..., description="Configuration for the second line of the LCD.")
+
 
 class LCDConfig(BaseModel):
     """Configuration for the LCD display."""
@@ -45,6 +48,7 @@ class LCDConfig(BaseModel):
     bus_number: int = Field(..., description="I2C bus number for the LCD display.", ge=0)
     display_time: int = Field(..., description="Seconds to display messages on LCD.", ge=1, le=60)
     startup_message: LCDMessageConfig = Field(..., description="Configuration for the startup message on the LCD.")
+
 
 class GPIOConfig(BaseModel):
     """Configuration for GPIO pin mappings."""

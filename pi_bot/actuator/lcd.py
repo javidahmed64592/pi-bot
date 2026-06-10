@@ -14,13 +14,15 @@ logger = logging.getLogger(__name__)
 class LCDController:
     """A simple controller for an LCD1602 display via I2C interface."""
 
-    def __init__(self, address: int, bus_number: int, display_time: int) -> None:  # noqa: FBT001, FBT002
+    def __init__(self, label: str, address: int, bus_number: int, display_time: int) -> None:  # noqa: FBT001, FBT002
         """Initialize the LCD1602 display.
 
-        :param int address: I2C address of the LCD display.
+        :param str label: Label for the LCD.
+        :param int address: I2C address of the LCD.
         :param int bus_number: I2C bus number.
         :param int display_time: Seconds to display messages on LCD.
         """
+        self.label = label
         self.address = address
         self.bus_number = bus_number
         self.display_time = display_time
@@ -28,9 +30,12 @@ class LCDController:
         self.backlight_enabled = False
         self._initialize_display()
         self.set_backlight(self.backlight_enabled)
+        logger.info(
+            "[%s] LCDController initialized at I2C address 0x%02X on bus %d.", self.label, self.address, self.bus_number
+        )
 
     def _write_word(self, data: int) -> None:
-        """Write a byte to the LCD display.
+        """Write a byte to the LCD.
 
         :param int data: The byte to write.
         """
@@ -42,7 +47,7 @@ class LCDController:
         self.bus.write_byte(self.address, temp)  # type: ignore[union-attr]
 
     def _send_command(self, command: int) -> None:
-        """Send a command to the LCD display.
+        """Send a command to the LCD.
 
         :param int command: The command byte to send.
         """
@@ -63,7 +68,7 @@ class LCDController:
         self._write_word(buf)
 
     def _send_data(self, data: int) -> None:
-        """Send data to the LCD display.
+        """Send data to the LCD.
 
         :param int data: The data byte to send.
         """
@@ -84,7 +89,7 @@ class LCDController:
         self._write_word(buf)
 
     def _initialize_display(self) -> None:
-        """Initialize the LCD display with proper settings."""
+        """Initialize the LCD with proper settings."""
         try:
             self._send_command(0x33)  # Must initialize to 8-line mode at first
             sleep(0.005)
@@ -96,13 +101,13 @@ class LCDController:
             sleep(0.005)
             self._send_command(0x01)  # Clear Screen
             self.bus.write_byte(self.address, 0x08)  # type: ignore[union-attr]
-            logger.info("LCD1602 display initialized successfully at address 0x%02X", self.address)
+            logger.info("[%s] Display initialized successfully.", self.label)
         except Exception:
-            logger.exception("Failed to initialize LCD1602 display!")
+            logger.exception("[%s] Failed to initialize display!", self.label)
             raise
 
     def _write(self, x: int, y: int, text: str) -> None:
-        """Write text to the LCD display at the specified position.
+        """Write text to the LCD at the specified position.
 
         :param int x: Column position (0-15).
         :param int y: Row position (0-1).
@@ -123,48 +128,55 @@ class LCDController:
             for char in text:
                 self._send_data(ord(char))
         except Exception:
-            logger.exception("Error writing text to LCD display!")
+            logger.exception("[%s] Error writing text to display!", self.label)
 
     def write(self, message: LCDMessageConfig) -> None:
-        """Write a message to the LCD display based on the provided configuration.
+        """Write a message to the LCD based on the provided configuration.
 
         :param LCDMessageConfig message: The message configuration containing text and position.
         """
+        logger.info("[%s] Writing message...", self.label)
         self._write(x=message.line_1.column, y=0, text=message.line_1.text)
         self._write(x=message.line_2.column, y=1, text=message.line_2.text)
 
     def clear(self) -> None:
-        """Clear the LCD display."""
+        """Clear the LCD."""
         try:
+            logger.info("[%s] Clearing...", self.label)
             self._send_command(0x01)
         except Exception:
-            logger.exception("Error clearing LCD display!")
+            logger.exception("[%s] Error clearing display!", self.label)
 
     def set_backlight(self, enabled: bool) -> None:  # noqa: FBT001
         """Enable or disable the LCD backlight.
 
         :param bool enabled: True to enable backlight, False to disable.
         """
-        self.backlight_enabled = enabled
-        if enabled:
-            self.bus.write_byte(self.address, 0x08)  # type: ignore[union-attr]
-        else:
-            self.bus.write_byte(self.address, 0x00)  # type: ignore[union-attr]
+        match enabled:
+            case True:
+                logger.info("[%s] Enabling backlight...", self.label)
+                byte_to_write = 0x08
+            case False:
+                logger.info("[%s] Disabling backlight...", self.label)
+                byte_to_write = 0x00
 
-    def _cleanup_component(self) -> None:
+        try:
+            self.bus.write_byte(self.address, byte_to_write)  # type: ignore[union-attr]
+            self.backlight_enabled = enabled
+        except Exception:
+            logger.exception("[%s] Error setting backlight!", self.label)
+
+    def cleanup(self) -> None:
         """Clean up I2C bus resources."""
         try:
             self.set_backlight(False)
             if self.bus:
                 self.bus.close()
                 self.bus = None
-            logger.info("LCD1602 cleanup complete.")
+            logger.info("[%s] Cleanup complete.", self.label)
         except Exception:
-            logger.exception("Error during LCD cleanup!")
+            logger.exception("[%s] Error during cleanup!", self.label)
 
-    def cleanup(self) -> None:
-        """Clean up I2C bus resources."""
-        self._cleanup_component()
 
 def get_lcd_controller(config: LCDConfig) -> LCDController:
     """Factory function to create an LCDController instance based on the provided configuration.
@@ -173,7 +185,10 @@ def get_lcd_controller(config: LCDConfig) -> LCDController:
     :return: An instance of LCDController.
     :rtype: LCDController
     """
-    return LCDController(address=config.i2c_address, bus_number=config.bus_number, display_time=config.display_time)
+    return LCDController(
+        label="LCD", address=config.i2c_address, bus_number=config.bus_number, display_time=config.display_time
+    )
+
 
 def debug(config: LCDConfig) -> None:
     """Demonstrate LCD1602 functionality."""
@@ -185,13 +200,13 @@ def debug(config: LCDConfig) -> None:
     logger.info("Testing LCD display...")
     sleep(off_time)
 
-    logger.info("1/3 - Toggle Display")
+    logger.info("1/4 - Toggle Display")
     lcd.set_backlight(True)
     sleep(off_time)
     lcd.set_backlight(False)
     sleep(off_time)
 
-    logger.info("2/3 - Display Startup Message")
+    logger.info("2/4 - Display Startup Message")
     lcd.set_backlight(True)
     sleep(off_time)
     lcd.write(message=config.startup_message)
@@ -199,11 +214,15 @@ def debug(config: LCDConfig) -> None:
     lcd.set_backlight(False)
     sleep(off_time)
 
-    logger.info("3/3 - Clear Display")
+    logger.info("3/4 - Clear Display")
     lcd.set_backlight(True)
     sleep(lcd.display_time)
     lcd.clear()
     sleep(off_time)
     lcd.set_backlight(False)
+
+    logger.info("4/4 - Cleanup")
+    sleep(off_time)
+    lcd.cleanup()
 
     logger.info("LCD tests complete!")
