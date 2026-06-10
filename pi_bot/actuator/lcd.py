@@ -183,9 +183,7 @@ def get_lcd_controller(config: LCDGPIOConfig) -> LCDController:
     :return: An instance of LCDController.
     :rtype: LCDController
     """
-    return LCDController(
-        label="LCD", address=config.i2c_address, bus_number=config.bus_number
-    )
+    return LCDController(label="LCD", address=config.i2c_address, bus_number=config.bus_number)
 
 
 def debug(lcd_gpio_config: LCDGPIOConfig, lcd_config: LCDConfig) -> None:

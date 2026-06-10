@@ -4,7 +4,8 @@ from time import sleep
 import logging
 from gpiozero import MotionSensor
 
-logger= logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
+
 
 class PIRController:
     """A simple controller for a PIR motion sensor."""
@@ -32,6 +33,7 @@ class PIRController:
 
         return motion_detected
 
+
 def get_pir_controller(label: str, pin: int) -> PIRController:
     """Factory function to create a PIRController instance.
 
@@ -41,6 +43,7 @@ def get_pir_controller(label: str, pin: int) -> PIRController:
     :rtype: PIRController
     """
     return PIRController(label=label, pin=pin)
+
 
 def debug(pir_pin: int) -> None:
     """Demonstrate PIR sensor functionality."""
