@@ -75,6 +75,7 @@ def get_status_led_controller_groups(led_pins_config: LEDPinsConfig) -> tuple[li
 
     :param LEDPinsConfig led_pins_config: The configuration containing GPIO pin numbers for the LEDs.
     :return: A tuple containing two lists of LEDController instances: (green_leds, red_leds).
+    :rtype: tuple[list[LEDController], list[LEDController]]
     """
     green_leds = [
         LEDController(label="Green LED 1", pin=led_pins_config.green_1),

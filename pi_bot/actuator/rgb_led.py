@@ -30,6 +30,7 @@ class RGBLEDController:
 
         :param RGBColour colour: The RGB colour to normalize.
         :return: A tuple of normalized RGB values (0.0-1.0).
+        :rtype: tuple[float, float, float]
         """
         return (colour.red / 255, colour.green / 255, colour.blue / 255)
 
@@ -107,6 +108,7 @@ def get_rgb_led_controller(rgb_pins_config: RGBPinsConfig) -> RGBLEDController:
 
     :param RGBPinsConfig rgb_pins_config: The configuration containing GPIO pin numbers for the LEDs.
     :return: An RGBLEDController instance for the main RGB LED.
+    :rtype: RGBLEDController
     """
     return RGBLEDController(
         label="RGB LED",
