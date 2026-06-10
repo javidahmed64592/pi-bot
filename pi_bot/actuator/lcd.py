@@ -1,4 +1,4 @@
-"""LCD1602 display control module for I2C interface."""
+"""LCD1602 display control script for the bot."""
 
 import logging
 from time import sleep
