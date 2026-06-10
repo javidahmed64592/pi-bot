@@ -13,12 +13,15 @@ logger = logging.getLogger(__name__)
 class BuzzerController:
     """A simple controller for a passive buzzer connected to a GPIO pin."""
 
-    def __init__(self, pin: int) -> None:
+    def __init__(self, label: str, pin: int) -> None:
         """Initialize the buzzer controller with the specified GPIO pin.
 
+        :param str label: A label for the buzzer.
         :param int pin: The GPIO pin number where the buzzer is connected.
         """
+        self.label = label
         self.buzzer = TonalBuzzer(pin)
+        logger.info("[%s] Initialized buzzer on GPIO pin: %d", self.label, pin)
 
     def play(self, note: str) -> None:
         """Play a specific musical note on the buzzer.
@@ -40,6 +43,7 @@ class BuzzerController:
 
         :param list[MusicalNoteConfig] tune: A list of MusicalNoteConfig objects representing the tune to play.
         """
+        logger.info("[%s] Playing tune with %d notes...", self.label, len(tune))
         for note_config in tune:
             self.play(note=note_config.full_note)
             sleep(note_config.duration)
@@ -53,7 +57,7 @@ def get_buzzer_controller(pin: int) -> BuzzerController:
     :return: An instance of BuzzerController.
     :rtype: BuzzerController
     """
-    return BuzzerController(pin)
+    return BuzzerController(label="Buzzer", pin=pin)
 
 
 def debug(buzzer_pin: int, buzzer_tunes_config: BuzzerTunesConfig) -> None:  # noqa: PLR0915
