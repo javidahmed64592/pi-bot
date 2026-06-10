@@ -70,23 +70,23 @@ def debug(buzzer_pin: int, buzzer_tunes_config: BuzzerTunesConfig) -> None:  # n
     logger.info("Testing buzzer tunes...")
     sleep(off_time)
 
-    logger.info("1/5 - Startup tune")
+    logger.info("1/5 - Startup Tune")
     buzzer.play_tune(buzzer_tunes_config.startup_tune)
     sleep(off_time)
 
-    logger.info("2/5 - Shutdown tune")
+    logger.info("2/5 - Shutdown Tune")
     buzzer.play_tune(buzzer_tunes_config.shutdown_tune)
     sleep(off_time)
 
-    logger.info("3/5 - State up tune")
+    logger.info("3/5 - State Up Tune")
     buzzer.play_tune(buzzer_tunes_config.state_up_tune)
     sleep(off_time)
 
-    logger.info("4/5 - State down tune")
+    logger.info("4/5 - State Down Tune")
     buzzer.play_tune(buzzer_tunes_config.state_down_tune)
     sleep(off_time)
 
-    logger.info("5/5 - Error tune")
+    logger.info("5/5 - Error Tune")
     buzzer.play_tune(buzzer_tunes_config.error_tune)
 
     logger.info("Buzzer tune tests completed.")
