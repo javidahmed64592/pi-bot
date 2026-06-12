@@ -6,12 +6,12 @@ import logging
 
 from template_python.logging_setup import setup_default_logging
 
-from pi_bot.actuator.led import debug as led_debug
-from pi_bot.actuator.rgb_led import debug as rgb_led_debug
 from pi_bot.actuator.buzzer import debug as buzzer_debug
 from pi_bot.actuator.lcd import debug as lcd_debug
-from pi_bot.sensor.pir import debug as pir_debug
+from pi_bot.actuator.led import debug as led_debug
+from pi_bot.actuator.rgb_led import debug as rgb_led_debug
 from pi_bot.config import load_config
+from pi_bot.sensor.pir import debug as pir_debug
 
 setup_default_logging()
 logger = logging.getLogger(__name__)

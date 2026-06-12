@@ -5,9 +5,9 @@ import logging
 
 from gpiozero import PWMLED
 
-from pi_bot.protocol import CommandType, ComponentType, SetLEDPatternPayload, Command, StatusLEDType
-from pi_bot.models import LEDPattern, LEDPatternConfig, StatusLEDStateConfig, BotConfig
 from pi_bot.actuator.actuator_component import ActuatorComponent
+from pi_bot.models import BotConfig, LEDPattern, LEDPatternConfig
+from pi_bot.protocol import Command, CommandType, ComponentType, SetLEDPatternPayload, StatusLEDType
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +75,8 @@ class LEDController:
 class LEDActuator(ActuatorComponent):
     """Actuator component for controlling the bot's status LEDs."""
 
-    def __init__(self, config: BotConfig, command_queue: asyncio.Queue):
+    def __init__(self, config: BotConfig, command_queue: asyncio.Queue) -> None:
+        """Initialize the LED actuator with the specified configuration and command queue."""
         super().__init__(config=config, command_queue=command_queue)
         self.green_leds = [
             LEDController(label="Green LED 1", pin=self.config.gpio.led_pins.green_1),

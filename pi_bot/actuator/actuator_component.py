@@ -1,8 +1,8 @@
 """Base component for actuator controllers."""
 
-from abc import ABC, abstractmethod
 import asyncio
 import logging
+from abc import ABC, abstractmethod
 
 from pi_bot.models import BotConfig
 from pi_bot.protocol import Command, ComponentType
@@ -13,7 +13,12 @@ logger = logging.getLogger(__name__)
 class ActuatorComponent(ABC):
     """Base class for actuator components."""
 
-    def __init__(self, config: BotConfig, command_queue: asyncio.Queue):
+    def __init__(self, config: BotConfig, command_queue: asyncio.Queue) -> None:
+        """Initialize the actuator component.
+
+        :param BotConfig config: The bot configuration.
+        :param asyncio.Queue command_queue: The command queue for this actuator.
+        """
         self.config = config
         self.command_queue = command_queue
         self._running = False
@@ -35,11 +40,7 @@ class ActuatorComponent(ABC):
         pass
 
     async def run(self) -> None:
-        """Run the actuator's command processing loop.
-
-        This method continuously dequeues commands from the actuator's dedicated
-        command queue and processes them. It runs until cancelled.
-        """
+        """Run the actuator's command processing loop."""
         self._running = True
         logger.info("[%s] Starting command processing loop...", self.label)
 

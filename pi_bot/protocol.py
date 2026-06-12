@@ -1,9 +1,10 @@
 """Event and command protocol definitions for the bot."""
 
 from enum import StrEnum, auto
+
 from pydantic import BaseModel, Field
 
-from pi_bot.models import LEDPatternConfig, RGBLEDPatternConfig, MusicalNoteConfig, LCDMessageConfig
+from pi_bot.models import LCDMessageConfig, LEDPatternConfig, MusicalNoteConfig, RGBLEDPatternConfig
 
 
 # Types
