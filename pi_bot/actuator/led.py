@@ -34,14 +34,14 @@ class LEDController:
         self.led.off()
 
     # Patterns
-    def pulse(self, interval: float) -> None:
+    def _pulse(self, interval: float) -> None:
         """Simulate a pulsing pattern by smoothly fading the LED in and out.
 
         :param float interval: The time in seconds for one pulse cycle (on and off).
         """
         self.led.pulse(fade_in_time=interval / 2, fade_out_time=interval / 2, background=True)
 
-    def blink(self, interval: float) -> None:
+    def _blink(self, interval: float) -> None:
         """Simulate a blinking pattern by turning the LED on and off at regular intervals.
 
         :param float interval: The time in seconds for one blink cycle (on and off).
@@ -62,10 +62,10 @@ class LEDController:
                 self.on()
             case LEDPattern.PULSE:
                 logger.info("[%s] Applying LED pattern: PULSE", self.label)
-                self.pulse(interval=pattern_config.interval)
+                self._pulse(interval=pattern_config.interval)
             case LEDPattern.BLINK:
                 logger.info("[%s] Applying LED pattern: BLINK", self.label)
-                self.blink(interval=pattern_config.interval)
+                self._blink(interval=pattern_config.interval)
             case _:
                 error_msg = f"Unsupported LED pattern: {pattern_config.pattern}"
                 logger.error("[%s] %s", self.label, error_msg)
