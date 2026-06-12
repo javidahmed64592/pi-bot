@@ -1,6 +1,7 @@
 """Main module for the Pi Bot application."""
 
 import argparse
+import asyncio
 import logging
 
 from template_python.logging_setup import setup_default_logging
@@ -41,7 +42,7 @@ def debug() -> None:
         case "rgb_led":
             rgb_led_debug(rgb_pins_config=config.gpio.rgb_pins, rgb_led_config=config.rgb_led_patterns)
         case "led":
-            led_debug(led_pins_config=config.gpio.led_pins, status_led_config=config.status_led_patterns)
+            asyncio.run(led_debug(config=config))
         case "buzzer":
             buzzer_debug(buzzer_pin=config.gpio.buzzer_pin, buzzer_tunes_config=config.buzzer_tunes)
         case "lcd":

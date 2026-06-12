@@ -1,11 +1,13 @@
 """LED control script for the bot."""
 
+import asyncio
 import logging
-from time import sleep
 
 from gpiozero import PWMLED
 
-from pi_bot.models import LEDPattern, LEDPatternConfig, LEDPinsConfig, StatusLEDStateConfig
+from pi_bot.protocol import CommandType, ComponentType, SetLEDPatternPayload, Command, StatusLEDType
+from pi_bot.models import LEDPattern, LEDPatternConfig, StatusLEDStateConfig, BotConfig
+from pi_bot.actuator.actuator_component import ActuatorComponent
 
 logger = logging.getLogger(__name__)
 
@@ -70,92 +72,170 @@ class LEDController:
                 raise ValueError(error_msg)
 
 
-def get_status_led_controller_groups(led_pins_config: LEDPinsConfig) -> tuple[list[LEDController], list[LEDController]]:
-    """Create and return groups of LED controllers for the status LEDs.
+class LEDActuator(ActuatorComponent):
+    """Actuator component for controlling the bot's status LEDs."""
 
-    :param LEDPinsConfig led_pins_config: The configuration containing GPIO pin numbers for the LEDs.
-    :return: A tuple containing two lists of LEDController instances: (green_leds, red_leds).
-    :rtype: tuple[list[LEDController], list[LEDController]]
-    """
-    green_leds = [
-        LEDController(label="Green LED 1", pin=led_pins_config.green_1),
-        LEDController(label="Green LED 2", pin=led_pins_config.green_2),
-    ]
-    red_leds = [
-        LEDController(label="Red LED 1", pin=led_pins_config.red_1),
-        LEDController(label="Red LED 2", pin=led_pins_config.red_2),
-    ]
-    return green_leds, red_leds
+    def __init__(self, config: BotConfig, command_queue: asyncio.Queue):
+        super().__init__(config=config, command_queue=command_queue)
+        self.green_leds = [
+            LEDController(label="Green LED 1", pin=self.config.gpio.led_pins.green_1),
+            LEDController(label="Green LED 2", pin=self.config.gpio.led_pins.green_2),
+        ]
+        self.red_leds = [
+            LEDController(label="Red LED 1", pin=self.config.gpio.led_pins.red_1),
+            LEDController(label="Red LED 2", pin=self.config.gpio.led_pins.red_2),
+        ]
+
+    @property
+    def component_type(self) -> ComponentType:
+        """Get the component type this actuator handles."""
+        return ComponentType.STATUS_LED
+
+    def handle_command(self, command: Command) -> None:
+        """Handle commands for the LED actuator."""
+        match command.command_type:
+            case CommandType.SET_LED_PATTERN:
+                payload: SetLEDPatternPayload = command.payload
+                self._apply_status_led_pattern(on_led_type=payload.on_led_type, pattern_config=payload.pattern_config)
+            case _:
+                error_msg = f"Unsupported command type: {command.command_type}"
+                logger.error("[%s] %s", self.label, error_msg)
+
+    def _apply_status_led_pattern(self, on_led_type: StatusLEDType, pattern_config: LEDPatternConfig) -> None:
+        """Apply the specified pattern to the 'on' LEDs and turn off the 'off' LEDs.
+
+        :param StatusLEDType on_led_type: The type of LED to turn on (GREEN or RED).
+        :param LEDPatternConfig pattern_config: The configuration for the LED pattern to apply to the 'on' LEDs.
+        """
+        match on_led_type:
+            case StatusLEDType.GREEN:
+                on_leds = self.green_leds
+                off_leds = self.red_leds
+            case StatusLEDType.RED:
+                on_leds = self.red_leds
+                off_leds = self.green_leds
+
+        for led in on_leds:
+            led.apply_pattern(pattern_config=pattern_config)
+        for led in off_leds:
+            led.apply_pattern(pattern_config=LEDPatternConfig(pattern=LEDPattern.OFF, interval=0.0))
 
 
-def apply_status_led_pattern(
-    on_leds: list[LEDController], off_leds: list[LEDController], pattern_config: LEDPatternConfig
-) -> None:
-    """Apply the specified pattern to the 'on' LEDs and turn off the 'off' LEDs.
-
-    :param list[LEDController] on_leds: The list of LED controllers to apply the pattern to.
-    :param list[LEDController] off_leds: The list of LED controllers to turn off.
-    :param LEDPatternConfig pattern_config: The configuration for the LED pattern to apply to the 'on' LEDs.
-    """
-    for led in on_leds:
-        led.apply_pattern(pattern_config=pattern_config)
-    for led in off_leds:
-        led.apply_pattern(pattern_config=LEDPatternConfig(pattern=LEDPattern.OFF, interval=0.0))
-
-
-def debug(led_pins_config: LEDPinsConfig, status_led_config: StatusLEDStateConfig) -> None:
+async def debug(config: BotConfig) -> None:
     """Debug function to test the status LEDs."""
     on_time = 5.0
     off_time = 2.0
 
-    green_leds, red_leds = get_status_led_controller_groups(led_pins_config=led_pins_config)
+    logger.info("Initializing components...")
+    command_queue = asyncio.Queue()
+    led_actuator = LEDActuator(config=config, command_queue=command_queue)
 
     def turn_off_all() -> None:
-        for led in [*green_leds, *red_leds]:
+        for led in [*led_actuator.green_leds, *led_actuator.red_leds]:
             led.apply_pattern(pattern_config=LEDPatternConfig(pattern=LEDPattern.OFF, interval=0.0))
 
     # Test all status LED patterns from config
     logger.info("Testing status LED patterns...")
-    sleep(off_time)
+
+    # Start the actuator's command processing loop in the background
+    task = asyncio.create_task(led_actuator.run())
+    await asyncio.sleep(off_time)
 
     logger.info("1/6 - Loading")
-    apply_status_led_pattern(on_leds=red_leds, off_leds=green_leds, pattern_config=status_led_config.loading)
-    sleep(on_time)
+    await command_queue.put(
+        Command(
+            component=ComponentType.STATUS_LED,
+            command_type=CommandType.SET_LED_PATTERN,
+            payload=SetLEDPatternPayload(
+                pattern_config=config.status_led_patterns.loading, on_led_type=StatusLEDType.RED
+            ),
+        )
+    )
+    await asyncio.sleep(on_time)
 
     turn_off_all()
-    sleep(off_time)
+    await asyncio.sleep(off_time)
 
     logger.info("2/6 - Ready")
-    apply_status_led_pattern(on_leds=green_leds, off_leds=red_leds, pattern_config=status_led_config.ready)
-    sleep(on_time)
+    await command_queue.put(
+        Command(
+            component=ComponentType.STATUS_LED,
+            command_type=CommandType.SET_LED_PATTERN,
+            payload=SetLEDPatternPayload(
+                pattern_config=config.status_led_patterns.ready, on_led_type=StatusLEDType.GREEN
+            ),
+        )
+    )
+    await asyncio.sleep(on_time)
 
     turn_off_all()
-    sleep(off_time)
+    await asyncio.sleep(off_time)
 
     logger.info("3/6 - Observing")
-    apply_status_led_pattern(on_leds=green_leds, off_leds=red_leds, pattern_config=status_led_config.observing)
-    sleep(on_time)
+    await command_queue.put(
+        Command(
+            component=ComponentType.STATUS_LED,
+            command_type=CommandType.SET_LED_PATTERN,
+            payload=SetLEDPatternPayload(
+                pattern_config=config.status_led_patterns.observing, on_led_type=StatusLEDType.GREEN
+            ),
+        )
+    )
+    await asyncio.sleep(on_time)
 
     turn_off_all()
-    sleep(off_time)
+    await asyncio.sleep(off_time)
 
     logger.info("4/6 - Silent")
-    apply_status_led_pattern(on_leds=red_leds, off_leds=green_leds, pattern_config=status_led_config.silent)
-    sleep(on_time)
+    await command_queue.put(
+        Command(
+            component=ComponentType.STATUS_LED,
+            command_type=CommandType.SET_LED_PATTERN,
+            payload=SetLEDPatternPayload(
+                pattern_config=config.status_led_patterns.silent, on_led_type=StatusLEDType.RED
+            ),
+        )
+    )
+    await asyncio.sleep(on_time)
 
     turn_off_all()
-    sleep(off_time)
+    await asyncio.sleep(off_time)
 
     logger.info("5/6 - Active")
-    apply_status_led_pattern(on_leds=green_leds, off_leds=red_leds, pattern_config=status_led_config.active)
-    sleep(on_time)
+    await command_queue.put(
+        Command(
+            component=ComponentType.STATUS_LED,
+            command_type=CommandType.SET_LED_PATTERN,
+            payload=SetLEDPatternPayload(
+                pattern_config=config.status_led_patterns.active, on_led_type=StatusLEDType.GREEN
+            ),
+        )
+    )
+    await asyncio.sleep(on_time)
 
     turn_off_all()
-    sleep(off_time)
+    await asyncio.sleep(off_time)
 
     logger.info("6/6 - Error")
-    apply_status_led_pattern(on_leds=red_leds, off_leds=green_leds, pattern_config=status_led_config.error)
-    sleep(on_time)
+    await command_queue.put(
+        Command(
+            component=ComponentType.STATUS_LED,
+            command_type=CommandType.SET_LED_PATTERN,
+            payload=SetLEDPatternPayload(
+                pattern_config=config.status_led_patterns.error, on_led_type=StatusLEDType.RED
+            ),
+        )
+    )
+    await asyncio.sleep(on_time)
 
     turn_off_all()
+    led_actuator.stop()
+    task.cancel()
+
+    # Wait for the task to finish cancellation
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
     logger.info("Status LED tests complete!")
