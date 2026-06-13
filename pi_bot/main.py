@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import logging
+from enum import StrEnum, auto
 
 from template_python.logging_setup import setup_default_logging
 
@@ -10,11 +11,23 @@ from pi_bot.actuator.buzzer import debug as buzzer_debug
 from pi_bot.actuator.lcd import debug as lcd_debug
 from pi_bot.actuator.led import debug as led_debug
 from pi_bot.actuator.rgb_led import debug as rgb_led_debug
+from pi_bot.audio.speaker import debug as piper_tts_debug
 from pi_bot.config import load_config
 from pi_bot.sensor.pir import debug as pir_debug
 
 setup_default_logging()
 logger = logging.getLogger(__name__)
+
+
+class DebugOptions(StrEnum):
+    """Enumeration of debug options for the Pi Bot."""
+
+    PIR = auto()
+    RGB_LED = auto()
+    LED = auto()
+    BUZZER = auto()
+    LCD = auto()
+    PIPER_TTS = auto()
 
 
 def main() -> None:
@@ -29,7 +42,7 @@ def debug() -> None:
     parser = argparse.ArgumentParser(description="Debug the Pi Bot's components.")
     parser.add_argument(
         "component",
-        choices=["pir", "rgb_led", "led", "buzzer", "lcd"],
+        choices=DebugOptions,
         help="The component to test",
     )
     args = parser.parse_args()
@@ -37,13 +50,15 @@ def debug() -> None:
     config = load_config()
 
     match args.component:
-        case "pir":
+        case DebugOptions.PIR:
             asyncio.run(pir_debug(config=config))
-        case "rgb_led":
+        case DebugOptions.RGB_LED:
             asyncio.run(rgb_led_debug(config=config))
-        case "led":
+        case DebugOptions.LED:
             asyncio.run(led_debug(config=config))
-        case "buzzer":
+        case DebugOptions.BUZZER:
             asyncio.run(buzzer_debug(config=config))
-        case "lcd":
+        case DebugOptions.LCD:
             asyncio.run(lcd_debug(config=config))
+        case DebugOptions.PIPER_TTS:
+            piper_tts_debug(config=config)
