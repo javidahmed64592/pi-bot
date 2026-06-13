@@ -38,7 +38,7 @@ def debug() -> None:
 
     match args.component:
         case "pir":
-            pir_debug(pir_pin=config.gpio.pir_pin)
+            asyncio.run(pir_debug(config=config))
         case "rgb_led":
             asyncio.run(rgb_led_debug(config=config))
         case "led":

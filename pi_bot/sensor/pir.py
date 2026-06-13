@@ -1,8 +1,13 @@
 """PIR sensor control script for the bot."""
 
-from time import sleep
+import asyncio
 import logging
+
 from gpiozero import MotionSensor
+
+from pi_bot.base_components.sensor_component import SensorComponent
+from pi_bot.models import BotConfig
+from pi_bot.protocol import ComponentType, Event, EventType, Payload
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +23,7 @@ class PIRController:
         """
         self.label = label
         self.sensor = MotionSensor(pin)
-        self.polling_interval = 0.1  # Time in seconds between sensor checks
+        self.polling_interval = 1.0  # Time in seconds between sensor checks
         logger.info("[%s] PIRController initialized on GPIO pin %d.", self.label, pin)
 
     @property
@@ -28,33 +33,89 @@ class PIRController:
         :return: True if motion is detected, False otherwise.
         :rtype: bool
         """
-        if motion_detected := self.sensor.motion_detected:
-            logger.info("[%s] Motion detected.", self.label)
-
-        return motion_detected
+        return self.sensor.motion_detected
 
 
-def get_pir_controller(label: str, pin: int) -> PIRController:
-    """Factory function to create a PIRController instance.
+class PIRSensor(SensorComponent):
+    """Sensor component for monitoring PIR motion detection."""
 
-    :param str label: Label for the PIR sensor.
-    :param int pin: GPIO pin number where the PIR sensor is connected.
-    :return: An instance of the PIRController class.
-    :rtype: PIRController
-    """
-    return PIRController(label=label, pin=pin)
+    def __init__(self, config: BotConfig, event_queue: asyncio.Queue) -> None:
+        """Initialize the PIR sensor with the specified configuration and event queue."""
+        super().__init__(config=config, event_queue=event_queue)
+        self.pir = PIRController(label="PIR Sensor", pin=self.config.gpio.pir_pin)
+        self._motion_active = False
+
+    @property
+    def component_type(self) -> ComponentType:
+        """Get the component type this sensor handles."""
+        return ComponentType.PIR
+
+    async def run(self) -> None:
+        """Run the PIR sensor's monitoring loop."""
+        await super().run()
+
+        try:
+            while self._running:
+                # Check for motion
+                if self.pir.motion_detected and not self._motion_active:
+                    await self.emit_event(
+                        Event(
+                            component=self.component_type,
+                            event_type=EventType.MOTION_DETECTED,
+                            payload=Payload(),
+                        )
+                    )
+                    self._motion_active = True
+                else:
+                    self._motion_active = False
+
+                # Poll at configured interval
+                await asyncio.sleep(self.pir.polling_interval)
+
+        except asyncio.CancelledError:
+            logger.info("[%s] Motion monitoring loop cancelled!", self.label)
+            raise
+        except Exception:
+            logger.exception("[%s] Error in monitoring loop!", self.label)
+        finally:
+            self._running = False
+            logger.info("[%s] Motion monitoring loop stopped.", self.label)
 
 
-def debug(pir_pin: int) -> None:
-    """Demonstrate PIR sensor functionality."""
-    pir = get_pir_controller(label="PIR Sensor", pin=pir_pin)
+async def debug(config: BotConfig) -> None:
+    """Debug function to test the PIR sensor."""
+    test_duration = 30.0
 
-    # Test PIR sensor
-    logger.info("Testing PIR sensor. Press Ctrl+C to stop.")
+    logger.info("Initializing components...")
+    event_queue = asyncio.Queue()
+    pir_sensor = PIRSensor(config=config, event_queue=event_queue)
+
+    # Start the sensor's monitoring loop in the background
+    logger.info("Testing PIR sensor for %.0f seconds...", test_duration)
+    task = asyncio.create_task(pir_sensor.run())
+
+    # Monitor events from the queue
     try:
-        while True:
-            if pir.motion_detected:
-                logger.info("Motion detected!")
-            sleep(pir.polling_interval)
+        start_time = asyncio.get_event_loop().time()
+        while asyncio.get_event_loop().time() - start_time < test_duration:
+            try:
+                event: Event = await asyncio.wait_for(event_queue.get(), timeout=1.0)
+                logger.info("Event received: %s from %s", event.event_type, event.component)
+                event_queue.task_done()
+            except TimeoutError:
+                pass
     except KeyboardInterrupt:
-        logger.info("PIR sensor debug stopped by user.")
+        logger.info("PIR sensor debug stopped by user")
+
+    # Stop the sensor task
+    logger.info("Stopping sensor...")
+    pir_sensor.stop()
+    task.cancel()
+
+    # Wait for the task to finish cancellation
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+    logger.info("PIR sensor tests complete!")
