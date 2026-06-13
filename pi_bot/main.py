@@ -40,7 +40,7 @@ def debug() -> None:
         case "pir":
             pir_debug(pir_pin=config.gpio.pir_pin)
         case "rgb_led":
-            rgb_led_debug(rgb_pins_config=config.gpio.rgb_pins, rgb_led_config=config.rgb_led_patterns)
+            asyncio.run(rgb_led_debug(config=config))
         case "led":
             asyncio.run(led_debug(config=config))
         case "buzzer":

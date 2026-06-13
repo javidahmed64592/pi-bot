@@ -1,11 +1,13 @@
 """RGB LED control script for the bot."""
 
+import asyncio
 import logging
-from time import sleep
 
 from gpiozero import RGBLED
 
-from pi_bot.models import LEDPattern, RGBColour, RGBLEDPatternConfig, RGBLEDStateConfig, RGBPinsConfig
+from pi_bot.actuator.actuator_component import ActuatorComponent
+from pi_bot.models import BotConfig, LEDPattern, RGBLEDPatternConfig, RGBColour
+from pi_bot.protocol import Command, CommandType, ComponentType, SetRGBLEDPatternPayload
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +52,7 @@ class RGBLEDController:
         self.led.color = self._normalise_colour(colour)
 
     # Patterns
-    def pulse(self, interval: float, colour: RGBColour) -> None:
+    def _pulse(self, interval: float, colour: RGBColour) -> None:
         """Simulate a pulsing pattern by smoothly fading the LED in and out.
 
         :param float interval: The time in seconds for one pulse cycle (on and off).
@@ -64,7 +66,7 @@ class RGBLEDController:
             background=True,
         )
 
-    def blink(self, interval: float, colour: RGBColour) -> None:
+    def _blink(self, interval: float, colour: RGBColour) -> None:
         """Simulate a blinking pattern by turning the LED on and off at regular intervals.
 
         :param float interval: The time in seconds for one blink cycle (on and off).
@@ -93,40 +95,56 @@ class RGBLEDController:
                 self.set_colour(colour=pattern_config.colours[0])
             case LEDPattern.PULSE:
                 logger.info("[%s] Applying LED pattern: PULSE", self.label)
-                self.pulse(interval=pattern_config.interval, colour=pattern_config.colours[0])
+                self._pulse(interval=pattern_config.interval, colour=pattern_config.colours[0])
             case LEDPattern.BLINK:
                 logger.info("[%s] Applying LED pattern: BLINK", self.label)
-                self.blink(interval=pattern_config.interval, colour=pattern_config.colours[0])
+                self._blink(interval=pattern_config.interval, colour=pattern_config.colours[0])
             case _:
                 error_msg = f"Unsupported LED pattern: {pattern_config.pattern}"
                 logger.error("[%s] %s", self.label, error_msg)
                 raise ValueError(error_msg)
 
 
-def get_rgb_led_controller(rgb_pins_config: RGBPinsConfig) -> RGBLEDController:
-    """Create and return an RGB LED controller for the main RGB LED.
+class RGBLEDActuator(ActuatorComponent):
+    """Actuator component for controlling the bot's RGB LED."""
 
-    :param RGBPinsConfig rgb_pins_config: The configuration containing GPIO pin numbers for the LEDs.
-    :return: An RGBLEDController instance for the main RGB LED.
-    :rtype: RGBLEDController
-    """
-    return RGBLEDController(
-        label="RGB LED",
-        red_pin=rgb_pins_config.red,
-        green_pin=rgb_pins_config.green,
-        blue_pin=rgb_pins_config.blue,
-    )
+    def __init__(self, config: BotConfig, command_queue: asyncio.Queue) -> None:
+        """Initialize the RGB LED actuator with the specified configuration and command queue."""
+        super().__init__(config=config, command_queue=command_queue)
+        self.rgb_led = RGBLEDController(
+            label="RGB LED",
+            red_pin=self.config.gpio.rgb_pins.red,
+            green_pin=self.config.gpio.rgb_pins.green,
+            blue_pin=self.config.gpio.rgb_pins.blue,
+        )
+
+    @property
+    def component_type(self) -> ComponentType:
+        """Get the component type this actuator handles."""
+        return ComponentType.RGB_LED
+
+    def handle_command(self, command: Command) -> None:
+        """Handle commands for the LED actuator."""
+        match command.command_type:
+            case CommandType.SET_LED_PATTERN:
+                payload: SetRGBLEDPatternPayload = command.payload
+                self.rgb_led.apply_pattern(pattern_config=payload.pattern_config)
+            case _:
+                error_msg = f"Unsupported command type: {command.command_type}"
+                logger.error("[%s] %s", self.label, error_msg)
 
 
-def debug(rgb_pins_config: RGBPinsConfig, rgb_led_config: RGBLEDStateConfig) -> None:  # noqa: PLR0915
+async def debug(config: BotConfig) -> None:  # noqa: PLR0915
     """Debug function to test the RGB LED."""
     on_time = 5.0
     off_time = 2.0
 
-    rgb_led = get_rgb_led_controller(rgb_pins_config=rgb_pins_config)
+    logger.info("Initializing components...")
+    command_queue = asyncio.Queue()
+    rgb_led_actuator = RGBLEDActuator(config=config, command_queue=command_queue)
 
     def turn_off_all() -> None:
-        rgb_led.apply_pattern(
+        rgb_led_actuator.rgb_led.apply_pattern(
             pattern_config=RGBLEDPatternConfig(
                 pattern=LEDPattern.OFF, interval=0.0, colours=[RGBColour(red=0, green=0, blue=0)]
             )
@@ -134,67 +152,133 @@ def debug(rgb_pins_config: RGBPinsConfig, rgb_led_config: RGBLEDStateConfig) -> 
 
     # Test all RGB LED patterns from config
     logger.info("Testing RGB LED patterns...")
-    sleep(off_time)
+
+    # Start the actuator's command processing loop in the background
+    task = asyncio.create_task(rgb_led_actuator.run())
+    await asyncio.sleep(off_time)
 
     logger.info("1/9 - Loading")
-    rgb_led.apply_pattern(pattern_config=rgb_led_config.loading)
-    sleep(on_time)
+    await command_queue.put(
+        Command(
+            component=ComponentType.RGB_LED,
+            command_type=CommandType.SET_LED_PATTERN,
+            payload=SetRGBLEDPatternPayload(pattern_config=config.rgb_led_patterns.loading),
+        )
+    )
+    await asyncio.sleep(on_time)
 
     turn_off_all()
-    sleep(off_time)
+    await asyncio.sleep(off_time)
 
     logger.info("2/9 - Ready")
-    rgb_led.apply_pattern(pattern_config=rgb_led_config.ready)
-    sleep(on_time)
+    await command_queue.put(
+        Command(
+            component=ComponentType.RGB_LED,
+            command_type=CommandType.SET_LED_PATTERN,
+            payload=SetRGBLEDPatternPayload(pattern_config=config.rgb_led_patterns.ready),
+        )
+    )
+    await asyncio.sleep(on_time)
 
     turn_off_all()
-    sleep(off_time)
+    await asyncio.sleep(off_time)
 
     logger.info("3/9 - Observing")
-    rgb_led.apply_pattern(pattern_config=rgb_led_config.observing)
-    sleep(on_time)
+    await command_queue.put(
+        Command(
+            component=ComponentType.RGB_LED,
+            command_type=CommandType.SET_LED_PATTERN,
+            payload=SetRGBLEDPatternPayload(pattern_config=config.rgb_led_patterns.observing),
+        )
+    )
+    await asyncio.sleep(on_time)
 
     turn_off_all()
-    sleep(off_time)
+    await asyncio.sleep(off_time)
 
     logger.info("4/9 - Silent")
-    rgb_led.apply_pattern(pattern_config=rgb_led_config.silent)
-    sleep(on_time)
+    await command_queue.put(
+        Command(
+            component=ComponentType.RGB_LED,
+            command_type=CommandType.SET_LED_PATTERN,
+            payload=SetRGBLEDPatternPayload(pattern_config=config.rgb_led_patterns.silent),
+        )
+    )
+    await asyncio.sleep(on_time)
 
     turn_off_all()
-    sleep(off_time)
+    await asyncio.sleep(off_time)
 
     logger.info("5/9 - Active (Listening)")
-    rgb_led.apply_pattern(pattern_config=rgb_led_config.active.listening)
-    sleep(on_time)
+    await command_queue.put(
+        Command(
+            component=ComponentType.RGB_LED,
+            command_type=CommandType.SET_LED_PATTERN,
+            payload=SetRGBLEDPatternPayload(pattern_config=config.rgb_led_patterns.active.listening),
+        )
+    )
+    await asyncio.sleep(on_time)
 
     turn_off_all()
-    sleep(off_time)
+    await asyncio.sleep(off_time)
 
     logger.info("6/9 - Active (Thinking)")
-    rgb_led.apply_pattern(pattern_config=rgb_led_config.active.thinking)
-    sleep(on_time)
+    await command_queue.put(
+        Command(
+            component=ComponentType.RGB_LED,
+            command_type=CommandType.SET_LED_PATTERN,
+            payload=SetRGBLEDPatternPayload(pattern_config=config.rgb_led_patterns.active.thinking),
+        )
+    )
+    await asyncio.sleep(on_time)
 
     turn_off_all()
-    sleep(off_time)
+    await asyncio.sleep(off_time)
 
     logger.info("7/9 - Active (Speaking)")
-    rgb_led.apply_pattern(pattern_config=rgb_led_config.active.speaking)
-    sleep(on_time)
+    await command_queue.put(
+        Command(
+            component=ComponentType.RGB_LED,
+            command_type=CommandType.SET_LED_PATTERN,
+            payload=SetRGBLEDPatternPayload(pattern_config=config.rgb_led_patterns.active.speaking),
+        )
+    )
+    await asyncio.sleep(on_time)
 
     turn_off_all()
-    sleep(off_time)
+    await asyncio.sleep(off_time)
 
     logger.info("8/9 - Active (Learning)")
-    rgb_led.apply_pattern(pattern_config=rgb_led_config.active.learning)
-    sleep(on_time)
+    await command_queue.put(
+        Command(
+            component=ComponentType.RGB_LED,
+            command_type=CommandType.SET_LED_PATTERN,
+            payload=SetRGBLEDPatternPayload(pattern_config=config.rgb_led_patterns.active.learning),
+        )
+    )
+    await asyncio.sleep(on_time)
 
     turn_off_all()
-    sleep(off_time)
+    await asyncio.sleep(off_time)
 
     logger.info("9/9 - Error")
-    rgb_led.apply_pattern(pattern_config=rgb_led_config.error)
-    sleep(on_time)
+    await command_queue.put(
+        Command(
+            component=ComponentType.RGB_LED,
+            command_type=CommandType.SET_LED_PATTERN,
+            payload=SetRGBLEDPatternPayload(pattern_config=config.rgb_led_patterns.error),
+        )
+    )
+    await asyncio.sleep(on_time)
 
     turn_off_all()
+    rgb_led_actuator.stop()
+    task.cancel()
+
+    # Wait for the task to finish cancellation
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
     logger.info("RGB LED tests complete!")
