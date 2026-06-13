@@ -272,6 +272,12 @@ async def debug(config: BotConfig) -> None:  # noqa: PLR0915
     await asyncio.sleep(on_time)
 
     turn_off_all()
+
+    # Wait for all commands to be processed
+    logger.info("Waiting for command queue to finish processing...")
+    await command_queue.join()
+
+    # Stop the actuator task
     rgb_led_actuator.stop()
     task.cancel()
 

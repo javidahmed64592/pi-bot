@@ -1,12 +1,14 @@
 """LCD1602 display control script for the bot."""
 
+import asyncio
 import logging
 from time import sleep
 
 import smbus2 as smbus
 
-from pi_bot.models import LCDConfig, LCDMessageConfig, LCDGPIOConfig
-
+from pi_bot.actuator.actuator_component import ActuatorComponent
+from pi_bot.models import BotConfig, LCDMessageConfig
+from pi_bot.protocol import Command, CommandType, ComponentType, WriteLCDTextPayload
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +16,7 @@ logger = logging.getLogger(__name__)
 class LCDController:
     """A simple controller for an LCD1602 display via I2C interface."""
 
-    def __init__(self, label: str, address: int, bus_number: int) -> None:  # noqa: FBT001, FBT002
+    def __init__(self, label: str, address: int, bus_number: int) -> None:
         """Initialize the LCD1602 display.
 
         :param str label: Label for the LCD.
@@ -176,49 +178,88 @@ class LCDController:
             logger.exception("[%s] Error during cleanup!", self.label)
 
 
-def get_lcd_controller(config: LCDGPIOConfig) -> LCDController:
-    """Factory function to create an LCDController instance based on the provided configuration.
+class LCDActuator(ActuatorComponent):
+    """Actuator component for controlling the bot's LCD."""
 
-    :param LCDGPIOConfig config: The configuration for the LCD display, including I2C address and bus number.
-    :return: An instance of LCDController.
-    :rtype: LCDController
-    """
-    return LCDController(label="LCD", address=config.i2c_address, bus_number=config.bus_number)
+    def __init__(self, config: BotConfig, command_queue: asyncio.Queue) -> None:
+        """Initialize the LCD actuator with the specified configuration and command queue."""
+        super().__init__(config=config, command_queue=command_queue)
+        self.lcd = LCDController(
+            label="LCD",
+            address=self.config.gpio.lcd.i2c_address,
+            bus_number=self.config.gpio.lcd.bus_number,
+        )
+
+    @property
+    def component_type(self) -> ComponentType:
+        """Get the component type this actuator handles."""
+        return ComponentType.LCD
+
+    def handle_command(self, command: Command) -> None:
+        """Handle commands for the LCD actuator."""
+        match command.command_type:
+            case CommandType.WRITE_LCD_TEXT:
+                payload: WriteLCDTextPayload = command.payload
+
+                # Turn on backlight
+                self.lcd.set_backlight(True)
+
+                # Write the message
+                self.lcd.write(message=payload.message)
+
+                # Keep display on for configured time
+                sleep(self.config.lcd.display_time)
+
+                # Clear and turn off backlight
+                self.lcd.clear()
+                self.lcd.set_backlight(False)
+
+            case _:
+                error_msg = f"Unsupported command type: {command.command_type}"
+                logger.error("[%s] %s", self.label, error_msg)
+
+    def stop(self) -> None:
+        """Signal the actuator to stop processing commands."""
+        super().stop()
+        self.lcd.cleanup()
 
 
-def debug(lcd_gpio_config: LCDGPIOConfig, lcd_config: LCDConfig) -> None:
+async def debug(config: BotConfig) -> None:
     """Demonstrate LCD1602 functionality."""
-    off_time = 3.0
+    off_time = 2.0
 
-    lcd = get_lcd_controller(config=lcd_gpio_config)
+    logger.info("Initializing components...")
+    command_queue = asyncio.Queue()
+    lcd_actuator = LCDActuator(config=config, command_queue=command_queue)
 
     # Test LCD display
     logger.info("Testing LCD display...")
-    sleep(off_time)
 
-    logger.info("1/4 - Toggle Display")
-    lcd.set_backlight(True)
-    sleep(off_time)
-    lcd.set_backlight(False)
-    sleep(off_time)
+    # Start the actuator's command processing loop in the background
+    task = asyncio.create_task(lcd_actuator.run())
+    await asyncio.sleep(off_time)
 
-    logger.info("2/4 - Display Startup Message")
-    lcd.set_backlight(True)
-    sleep(off_time)
-    lcd.write(message=lcd_config.startup_message)
-    sleep(lcd_config.display_time)
-    lcd.set_backlight(False)
-    sleep(off_time)
+    logger.info("1/1 - Startup Message")
+    await command_queue.put(
+        Command(
+            component=ComponentType.LCD,
+            command_type=CommandType.WRITE_LCD_TEXT,
+            payload=WriteLCDTextPayload(message=config.lcd.startup_message),
+        )
+    )
 
-    logger.info("3/4 - Clear Display")
-    lcd.set_backlight(True)
-    sleep(lcd_config.display_time)
-    lcd.clear()
-    sleep(off_time)
-    lcd.set_backlight(False)
-    sleep(off_time)
+    # Wait for all commands to be processed
+    logger.info("Waiting for command queue to finish processing...")
+    await command_queue.join()
 
-    logger.info("4/4 - Cleanup")
-    lcd.cleanup()
+    # Stop the actuator task
+    lcd_actuator.stop()
+    task.cancel()
+
+    # Wait for the task to finish cancellation
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
 
     logger.info("LCD tests complete!")

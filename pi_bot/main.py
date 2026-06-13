@@ -46,4 +46,4 @@ def debug() -> None:
         case "buzzer":
             buzzer_debug(buzzer_pin=config.gpio.buzzer_pin, buzzer_tunes_config=config.buzzer_tunes)
         case "lcd":
-            lcd_debug(lcd_gpio_config=config.gpio.lcd, lcd_config=config.lcd)
+            asyncio.run(lcd_debug(config=config))

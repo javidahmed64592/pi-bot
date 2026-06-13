@@ -230,6 +230,12 @@ async def debug(config: BotConfig) -> None:
     await asyncio.sleep(on_time)
 
     turn_off_all()
+
+    # Wait for all commands to be processed
+    logger.info("Waiting for command queue to finish processing...")
+    await command_queue.join()
+
+    # Stop the actuator task
     led_actuator.stop()
     task.cancel()
 
