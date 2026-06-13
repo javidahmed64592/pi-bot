@@ -133,6 +133,15 @@ class RGBLEDActuator(ActuatorComponent):
                 error_msg = f"Unsupported command type: {command.command_type}"
                 logger.error("[%s] %s", self.label, error_msg)
 
+    def stop(self) -> None:
+        """Signal the actuator to stop processing commands."""
+        super().stop()
+        self.rgb_led.apply_pattern(
+            pattern_config=RGBLEDPatternConfig(
+                pattern=LEDPattern.OFF, interval=0.0, colours=[RGBColour(red=0, green=0, blue=0)]
+            )
+        )
+
 
 async def debug(config: BotConfig) -> None:  # noqa: PLR0915
     """Debug function to test the RGB LED."""
@@ -270,8 +279,6 @@ async def debug(config: BotConfig) -> None:  # noqa: PLR0915
         )
     )
     await asyncio.sleep(on_time)
-
-    turn_off_all()
 
     # Wait for all commands to be processed
     logger.info("Waiting for command queue to finish processing...")

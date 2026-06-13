@@ -121,6 +121,12 @@ class LEDActuator(ActuatorComponent):
         for led in off_leds:
             led.apply_pattern(pattern_config=LEDPatternConfig(pattern=LEDPattern.OFF, interval=0.0))
 
+    def stop(self) -> None:
+        """Signal the actuator to stop processing commands."""
+        super().stop()
+        for led in [*self.green_leds, *self.red_leds]:
+            led.apply_pattern(pattern_config=LEDPatternConfig(pattern=LEDPattern.OFF, interval=0.0))
+
 
 async def debug(config: BotConfig) -> None:
     """Debug function to test the status LEDs."""
@@ -228,8 +234,6 @@ async def debug(config: BotConfig) -> None:
         )
     )
     await asyncio.sleep(on_time)
-
-    turn_off_all()
 
     # Wait for all commands to be processed
     logger.info("Waiting for command queue to finish processing...")
