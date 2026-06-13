@@ -94,6 +94,7 @@ class LEDActuator(ActuatorComponent):
 
     def handle_command(self, command: Command) -> None:
         """Handle commands for the LED actuator."""
+        super().handle_command(command)
         match command.command_type:
             case CommandType.SET_LED_PATTERN:
                 payload: SetLEDPatternPayload = command.payload
@@ -141,10 +142,8 @@ async def debug(config: BotConfig) -> None:
         for led in [*led_actuator.green_leds, *led_actuator.red_leds]:
             led.apply_pattern(pattern_config=LEDPatternConfig(pattern=LEDPattern.OFF, interval=0.0))
 
-    # Test all status LED patterns from config
-    logger.info("Testing status LED patterns...")
-
     # Start the actuator's command processing loop in the background
+    logger.info("Testing status LED patterns...")
     task = asyncio.create_task(led_actuator.run())
     await asyncio.sleep(off_time)
 

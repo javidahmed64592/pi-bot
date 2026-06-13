@@ -125,6 +125,7 @@ class RGBLEDActuator(ActuatorComponent):
 
     def handle_command(self, command: Command) -> None:
         """Handle commands for the LED actuator."""
+        super().handle_command(command)
         match command.command_type:
             case CommandType.SET_LED_PATTERN:
                 payload: SetRGBLEDPatternPayload = command.payload
@@ -159,10 +160,8 @@ async def debug(config: BotConfig) -> None:  # noqa: PLR0915
             )
         )
 
-    # Test all RGB LED patterns from config
-    logger.info("Testing RGB LED patterns...")
-
     # Start the actuator's command processing loop in the background
+    logger.info("Testing RGB LED patterns...")
     task = asyncio.create_task(rgb_led_actuator.run())
     await asyncio.sleep(off_time)
 

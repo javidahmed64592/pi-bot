@@ -197,6 +197,7 @@ class LCDActuator(ActuatorComponent):
 
     def handle_command(self, command: Command) -> None:
         """Handle commands for the LCD actuator."""
+        super().handle_command(command)
         match command.command_type:
             case CommandType.WRITE_LCD_TEXT:
                 payload: WriteLCDTextPayload = command.payload
@@ -232,10 +233,8 @@ async def debug(config: BotConfig) -> None:
     command_queue = asyncio.Queue()
     lcd_actuator = LCDActuator(config=config, command_queue=command_queue)
 
-    # Test LCD display
-    logger.info("Testing LCD display...")
-
     # Start the actuator's command processing loop in the background
+    logger.info("Testing LCD display...")
     task = asyncio.create_task(lcd_actuator.run())
     await asyncio.sleep(off_time)
 

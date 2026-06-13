@@ -37,7 +37,7 @@ class ActuatorComponent(ABC):
     @abstractmethod
     def handle_command(self, command: Command) -> None:
         """Handle a command for the actuator."""
-        pass
+        logger.debug("[%s] Handling command: %s", self.label, command.command_type)
 
     async def run(self) -> None:
         """Run the actuator's command processing loop."""

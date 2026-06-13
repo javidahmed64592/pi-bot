@@ -68,6 +68,7 @@ class BuzzerActuator(ActuatorComponent):
 
     def handle_command(self, command: Command) -> None:
         """Handle commands for the buzzer actuator."""
+        super().handle_command(command)
         match command.command_type:
             case CommandType.PLAY_TUNE:
                 payload: PlayTunePayload = command.payload
@@ -85,10 +86,8 @@ async def debug(config: BotConfig) -> None:
     command_queue = asyncio.Queue()
     buzzer_actuator = BuzzerActuator(config=config, command_queue=command_queue)
 
-    # Test each tune in the configuration
-    logger.info("Testing buzzer tunes...")
-
     # Start the actuator's command processing loop in the background
+    logger.info("Testing buzzer tunes...")
     task = asyncio.create_task(buzzer_actuator.run())
     await asyncio.sleep(off_time)
 
