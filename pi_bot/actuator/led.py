@@ -5,7 +5,7 @@ import logging
 
 from gpiozero import PWMLED
 
-from pi_bot.actuator.actuator_component import ActuatorComponent
+from pi_bot.base_components import ActuatorComponent
 from pi_bot.models import BotConfig, LEDPattern, LEDPatternConfig
 from pi_bot.protocol import Command, CommandType, ComponentType, SetLEDPatternPayload, StatusLEDType
 

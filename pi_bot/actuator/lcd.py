@@ -6,7 +6,7 @@ from time import sleep
 
 import smbus2 as smbus
 
-from pi_bot.actuator.actuator_component import ActuatorComponent
+from pi_bot.base_components import ActuatorComponent
 from pi_bot.models import BotConfig, LCDMessageConfig
 from pi_bot.protocol import Command, CommandType, ComponentType, WriteLCDTextPayload
 

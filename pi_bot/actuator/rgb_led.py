@@ -5,7 +5,7 @@ import logging
 
 from gpiozero import RGBLED
 
-from pi_bot.actuator.actuator_component import ActuatorComponent
+from pi_bot.base_components import ActuatorComponent
 from pi_bot.models import BotConfig, LEDPattern, RGBColour, RGBLEDPatternConfig
 from pi_bot.protocol import Command, CommandType, ComponentType, SetRGBLEDPatternPayload
 
