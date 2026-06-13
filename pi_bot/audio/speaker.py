@@ -8,6 +8,7 @@ import pyaudio
 from piper import PiperVoice
 
 from pi_bot.base_components.bidirectional_component import BidirectionalComponent
+from pi_bot.config import MODELS_DIRECTORY
 from pi_bot.models import BotConfig
 from pi_bot.protocol import Command, CommandType, ComponentType, Event, EventType, Payload, SpeakTextPayload
 
@@ -53,7 +54,7 @@ class SpeakerActuator(BidirectionalComponent):
     def __init__(self, config: BotConfig, command_queue: asyncio.Queue, event_queue: asyncio.Queue) -> None:
         """Initialize the speaker actuator with the specified configuration and queues."""
         super().__init__(config=config, command_queue=command_queue, event_queue=event_queue)
-        model_path = "models" / self.config.audio.piper.model_path
+        model_path = MODELS_DIRECTORY / self.config.audio.piper.model_name
         self.speaker = SpeakerController(label="PiperTTS", model_path=model_path)
 
     @property
