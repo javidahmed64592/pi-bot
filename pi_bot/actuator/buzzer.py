@@ -1,11 +1,14 @@
 """Passive buzzer control script for the bot."""
 
+import asyncio
 import logging
 from time import sleep
 
 from gpiozero import TonalBuzzer
 
-from pi_bot.models import BuzzerTunesConfig, MusicalNoteConfig, MusicalNote
+from pi_bot.actuator.actuator_component import ActuatorComponent
+from pi_bot.models import BotConfig, MusicalNote, MusicalNoteConfig
+from pi_bot.protocol import Command, CommandType, ComponentType, PlayTunePayload
 
 logger = logging.getLogger(__name__)
 
@@ -50,43 +53,107 @@ class BuzzerController:
         self.stop()
 
 
-def get_buzzer_controller(pin: int) -> BuzzerController:
-    """Factory function to create a BuzzerController instance.
+class BuzzerActuator(ActuatorComponent):
+    """Actuator component for controlling the bot's buzzer."""
 
-    :param int pin: The GPIO pin number where the buzzer is connected.
-    :return: An instance of BuzzerController.
-    :rtype: BuzzerController
-    """
-    return BuzzerController(label="Buzzer", pin=pin)
+    def __init__(self, config: BotConfig, command_queue: asyncio.Queue) -> None:
+        """Initialize the buzzer actuator with the specified configuration and command queue."""
+        super().__init__(config=config, command_queue=command_queue)
+        self.buzzer = BuzzerController(label="Buzzer", pin=config.gpio.buzzer_pin)
+
+    @property
+    def component_type(self) -> ComponentType:
+        """Get the component type this actuator handles."""
+        return ComponentType.BUZZER
+
+    def handle_command(self, command: Command) -> None:
+        """Handle commands for the buzzer actuator."""
+        match command.command_type:
+            case CommandType.PLAY_TUNE:
+                payload: PlayTunePayload = command.payload
+                self.buzzer.play_tune(tune=payload.tune)
+            case _:
+                error_msg = f"Unsupported command type: {command.command_type}"
+                logger.error("[%s] %s", self.label, error_msg)
 
 
-def debug(buzzer_pin: int, buzzer_tunes_config: BuzzerTunesConfig) -> None:  # noqa: PLR0915
+async def debug(config: BotConfig) -> None:
     """Debug function to test the buzzer."""
     off_time = 3.0
 
-    buzzer = get_buzzer_controller(pin=buzzer_pin)
+    logger.info("Initializing components...")
+    command_queue = asyncio.Queue()
+    buzzer_actuator = BuzzerActuator(config=config, command_queue=command_queue)
 
     # Test each tune in the configuration
     logger.info("Testing buzzer tunes...")
-    sleep(off_time)
+
+    # Start the actuator's command processing loop in the background
+    task = asyncio.create_task(buzzer_actuator.run())
+    await asyncio.sleep(off_time)
 
     logger.info("1/5 - Startup Tune")
-    buzzer.play_tune(buzzer_tunes_config.startup_tune)
-    sleep(off_time)
+    await command_queue.put(
+        Command(
+            component=ComponentType.BUZZER,
+            command_type=CommandType.PLAY_TUNE,
+            payload=PlayTunePayload(tune=config.buzzer_tunes.startup_tune),
+        )
+    )
+    await asyncio.sleep(off_time)
 
     logger.info("2/5 - Shutdown Tune")
-    buzzer.play_tune(buzzer_tunes_config.shutdown_tune)
-    sleep(off_time)
+    await command_queue.put(
+        Command(
+            component=ComponentType.BUZZER,
+            command_type=CommandType.PLAY_TUNE,
+            payload=PlayTunePayload(tune=config.buzzer_tunes.shutdown_tune),
+        )
+    )
+    await asyncio.sleep(off_time)
 
     logger.info("3/5 - State Up Tune")
-    buzzer.play_tune(buzzer_tunes_config.state_up_tune)
-    sleep(off_time)
+    await command_queue.put(
+        Command(
+            component=ComponentType.BUZZER,
+            command_type=CommandType.PLAY_TUNE,
+            payload=PlayTunePayload(tune=config.buzzer_tunes.state_up_tune),
+        )
+    )
+    await asyncio.sleep(off_time)
 
     logger.info("4/5 - State Down Tune")
-    buzzer.play_tune(buzzer_tunes_config.state_down_tune)
-    sleep(off_time)
+    await command_queue.put(
+        Command(
+            component=ComponentType.BUZZER,
+            command_type=CommandType.PLAY_TUNE,
+            payload=PlayTunePayload(tune=config.buzzer_tunes.state_down_tune),
+        )
+    )
+    await asyncio.sleep(off_time)
 
     logger.info("5/5 - Error Tune")
-    buzzer.play_tune(buzzer_tunes_config.error_tune)
+    await command_queue.put(
+        Command(
+            component=ComponentType.BUZZER,
+            command_type=CommandType.PLAY_TUNE,
+            payload=PlayTunePayload(tune=config.buzzer_tunes.error_tune),
+        )
+    )
+    await asyncio.sleep(off_time)
 
-    logger.info("Buzzer tune tests complete!")
+    # Wait for all commands to be processed
+    logger.info("Waiting for command queue to finish processing...")
+    await command_queue.join()
+
+    # Stop the actuator task
+    buzzer_actuator.stop()
+    task.cancel()
+
+    # Wait for the task to finish cancellation
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+    logger.info("Buzzer tests complete!")
