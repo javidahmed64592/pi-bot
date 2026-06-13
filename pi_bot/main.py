@@ -61,4 +61,4 @@ def debug() -> None:
         case DebugOptions.LCD:
             asyncio.run(lcd_debug(config=config))
         case DebugOptions.PIPER_TTS:
-            piper_tts_debug(config=config)
+            asyncio.run(piper_tts_debug(config=config))
