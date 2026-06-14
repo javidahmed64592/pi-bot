@@ -24,6 +24,7 @@ dependencies = [
     "pyaudio>=0.2.14",
     "smbus2>=0.6.1",
     "template-python @ git+https://github.com/javidahmed64592/template-python.git",
+    "vosk>=0.3.45",
 ]
 
 [project.optional-dependencies]
