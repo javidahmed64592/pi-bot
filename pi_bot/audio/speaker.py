@@ -105,13 +105,11 @@ async def debug(config: BotConfig) -> None:
     speaker_actuator = SpeakerActuator(config=config, command_queue=command_queue, event_queue=event_queue)
 
     # Start the speaker's command processing loop in the background
+    logger.info("Testing Piper TTS system...")
     task = asyncio.create_task(speaker_actuator.run())
     await asyncio.sleep(1.0)
 
-    # Test Piper TTS by sending command
-    logger.info("Testing Piper TTS system...")
-
-    logger.info("1/1 - Text to Speech")
+    # Step 1: Send command to speak text
     test_text = "Hello, this is a test of the Piper text-to-speech system."
     logger.info("Sending text: %s", test_text)
     await command_queue.put(
@@ -122,26 +120,26 @@ async def debug(config: BotConfig) -> None:
         )
     )
 
-    # Wait for STARTED_SPEAKING event
-    logger.info("Waiting for %s event...", EventType.STARTED_SPEAKING)
+    # Step 2: Wait for Piper to start speaking
+    logger.info("Waiting for event: %s", EventType.STARTED_SPEAKING)
     event: Event = await event_queue.get()
-    if not event.event_type == EventType.STARTED_SPEAKING:
+    if event.event_type != EventType.STARTED_SPEAKING:
         error_msg = f"Unexpected event received: {event.event_type} from {event.component}"
         logger.error(error_msg)
         raise RuntimeError(error_msg)
 
-    logger.info("Event received: %s from %s", event.event_type, event.component)
+    logger.info("Event received: %s", event.event_type)
     event_queue.task_done()
 
-    # Wait for STOPPED_SPEAKING event
-    logger.info("Waiting for %s event...", EventType.STOPPED_SPEAKING)
+    # Step 3: Wait for Piper to stop speaking
+    logger.info("Waiting for event: %s", EventType.STOPPED_SPEAKING)
     event: Event = await event_queue.get()
-    if not event.event_type == EventType.STOPPED_SPEAKING:
+    if event.event_type != EventType.STOPPED_SPEAKING:
         error_msg = f"Unexpected event received: {event.event_type} from {event.component}"
         logger.error(error_msg)
         raise RuntimeError(error_msg)
 
-    logger.info("Event received: %s from %s", event.event_type, event.component)
+    logger.info("Event received: %s", event.event_type)
     event_queue.task_done()
 
     # Wait for all commands to be processed

@@ -11,7 +11,8 @@ from pi_bot.actuator.buzzer import debug as buzzer_debug
 from pi_bot.actuator.lcd import debug as lcd_debug
 from pi_bot.actuator.led import debug as led_debug
 from pi_bot.actuator.rgb_led import debug as rgb_led_debug
-from pi_bot.audio.speaker import debug as piper_tts_debug
+from pi_bot.audio.microphone import debug as microphone_debug
+from pi_bot.audio.speaker import debug as speaker_debug
 from pi_bot.config import load_config
 from pi_bot.sensor.pir import debug as pir_debug
 
@@ -27,7 +28,8 @@ class DebugOptions(StrEnum):
     LED = auto()
     BUZZER = auto()
     LCD = auto()
-    PIPER_TTS = auto()
+    MICROPHONE = auto()
+    SPEAKER = auto()
 
 
 def main() -> None:
@@ -60,5 +62,7 @@ def debug() -> None:
             asyncio.run(buzzer_debug(config=config))
         case DebugOptions.LCD:
             asyncio.run(lcd_debug(config=config))
-        case DebugOptions.PIPER_TTS:
-            asyncio.run(piper_tts_debug(config=config))
+        case DebugOptions.MICROPHONE:
+            asyncio.run(microphone_debug(config=config))
+        case DebugOptions.SPEAKER:
+            asyncio.run(speaker_debug(config=config))

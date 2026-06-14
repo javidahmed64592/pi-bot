@@ -49,6 +49,7 @@ class CommandType(StrEnum):
     PLAY_TUNE = auto()
     WRITE_LCD_TEXT = auto()
     START_LISTENING = auto()
+    START_TRANSCRIPTION = auto()
     STOP_LISTENING = auto()
     SPEAK_TEXT = auto()
 

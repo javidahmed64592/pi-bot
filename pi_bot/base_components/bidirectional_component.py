@@ -3,6 +3,8 @@
 import asyncio
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Coroutine
+from typing import Any
 
 from pi_bot.models import BotConfig
 from pi_bot.protocol import Command, ComponentType, Event
@@ -52,27 +54,40 @@ class BidirectionalComponent(ABC):
         """
         pass
 
+    def extra_tasks(self) -> list[Coroutine[Any, Any, None]]:
+        """Return additional coroutines to run concurrently alongside the command loop.
+
+        Override in subclasses to add component-specific background tasks.
+        """
+        return []
+
+    async def _command_loop(self) -> None:
+        """Process commands from the command queue."""
+        while self._running:
+            try:
+                command: Command = await self.command_queue.get()
+                logger.debug("[%s] Processing command: %s", self.label, command.command_type)
+                await self.handle_command(command=command)
+                self.command_queue.task_done()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("[%s] Error processing command!", self.label)
+
     async def run(self) -> None:
-        """Run the component's command processing loop."""
+        """Run the component's command processing loop and any extra tasks concurrently."""
         self._running = True
         logger.info("[%s] Starting command processing loop...", self.label)
 
+        tasks = [asyncio.create_task(self._command_loop())] + [asyncio.create_task(coro) for coro in self.extra_tasks()]
+
         try:
-            while self._running:
-                try:
-                    command: Command = await self.command_queue.get()
-                    logger.debug("[%s] Processing command: %s", self.label, command.command_type)
-
-                    await self.handle_command(command)
-                    self.command_queue.task_done()
-                except asyncio.CancelledError:
-                    logger.info("[%s] Command processing loop cancelled!", self.label)
-                    raise
-                except Exception:
-                    logger.exception("[%s] Error processing command!", self.label)
-
+            await asyncio.gather(*tasks)
         except asyncio.CancelledError:
-            logger.info("[%s] Shutting down command processing loop...", self.label)
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
         finally:
             self._running = False
             logger.info("[%s] Command processing loop stopped.", self.label)
