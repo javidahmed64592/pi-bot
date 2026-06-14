@@ -62,27 +62,19 @@ class GPIOConfig(BaseModel):
 
 
 # Audio Configuration
-class VoskSTTConfig(BaseModel):
-    """Speech capture settings for Vosk speech recognition."""
-
-    capture_timeout: float = Field(
-        ..., description="Maximum duration (in seconds) to capture audio for speech recognition.", ge=0.1, le=60.0
-    )
-    silence_timeout: float = Field(
-        ..., description="Silence duration (in seconds) to end speech capture.", ge=0.1, le=10.0
-    )
-    min_speech_duration: float = Field(
-        ..., description="Minimum speech duration (in seconds) to process.", ge=0.1, le=10.0
-    )
-
-
 class VoskConfig(BaseModel):
     """Configuration for Vosk speech recognition."""
 
     model_name: str = Field(..., description="Name of the Vosk model to use for speech recognition.")
-    wake_phrases: list[str] = Field(..., description="List of wake phrases to activate the bot.")
-    keyword_mode: bool = Field(..., description="Whether or not to use keyword mode for Vosk.")
-    stt: VoskSTTConfig = Field(..., description="Speech capture settings for Vosk speech recognition.")
+    sample_rate: int = Field(..., description="Audio sample rate in Hz.", ge=8000, le=48000)
+    chunk_size: int = Field(..., description="Size of audio chunks to read from the microphone.", ge=1024, le=8192)
+    silence_timeout: float = Field(
+        ...,
+        description="Silence duration (in seconds) to end speech capture when no speech has been captured at all.",
+        ge=5.0,
+        le=30.0,
+    )
+    wake_words: list[str] = Field(..., description="List of wake phrases to activate the bot.")
 
     @property
     def model_path(self) -> Path:
@@ -109,9 +101,6 @@ class PiperConfig(BaseModel):
 class AudioConfig(BaseModel):
     """Configuration for audio settings."""
 
-    microphone_device: str = Field(..., description="Name of the microphone device to use for audio input.")
-    speaker_device: str = Field(..., description="Name of the speaker device to use for audio output.")
-    sample_rate: int = Field(..., description="Audio sample rate in Hz.", ge=8000, le=48000)
     vosk: VoskConfig = Field(..., description="Configuration for Vosk speech recognition.")
     piper: PiperConfig = Field(..., description="Configuration for Piper Text-to-Speech.")
 

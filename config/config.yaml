@@ -20,22 +20,14 @@ gpio:
 
 # Audio Configuration
 audio:
-  microphone_device: "default"
-  speaker_device: "default"
-  sample_rate: 16000
-
-  # Vosk - Offline wake word detection + speech-to-text
+  # Vosk - Wake Word Detection + Speech-to-Text
   vosk:
     model_name: "vosk-model-en-us-0.22"
-    wake_phrases:
+    sample_rate: 16000
+    chunk_size: 4096
+    silence_timeout: 10.0
+    wake_words:
       - "hey"
-
-    keyword_mode: true
-
-    stt:
-      capture_timeout: 30.0
-      silence_timeout: 2.5
-      min_speech_duration: 1.0
 
   # Piper Text-to-Speech
   piper:
