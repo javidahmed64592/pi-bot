@@ -92,11 +92,6 @@ class PiperConfig(BaseModel):
         """Get the path to the Piper voice ONNX file."""
         return Path("piper") / f"{self.model_name}.onnx"
 
-    @property
-    def config_path(self) -> Path:
-        """Get the path to the Piper voice configuration file."""
-        return self.model_path.with_suffix(".json")
-
 
 class AudioConfig(BaseModel):
     """Configuration for audio settings."""

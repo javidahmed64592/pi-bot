@@ -54,8 +54,9 @@ class SpeakerActuator(BidirectionalComponent):
     def __init__(self, config: BotConfig, command_queue: asyncio.Queue, event_queue: asyncio.Queue) -> None:
         """Initialize the speaker actuator with the specified configuration and queues."""
         super().__init__(config=config, command_queue=command_queue, event_queue=event_queue)
-        model_path = MODELS_DIRECTORY / self.config.audio.piper.model_name
-        self.speaker = SpeakerController(label="PiperTTS", model_path=model_path)
+        self.speaker = SpeakerController(
+            label="PiperTTS", model_path=MODELS_DIRECTORY / self.config.audio.piper.model_path
+        )
 
     @property
     def component_type(self) -> ComponentType:
