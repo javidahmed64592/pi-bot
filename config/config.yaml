@@ -81,9 +81,9 @@ llm:
 
   embeddings:
     model_name: "embeddinggemma"
-    top_k: 5              # Return top 5 relevant facts
-    min_similarity: 0.7   # Minimum cosine similarity (0.0-1.0)
-    max_facts: 1000       # Maximum facts to store
+    top_k: 5
+    min_similarity: 0.7
+    max_facts: 1000
 
 # Bot Behaviour
 behaviour:

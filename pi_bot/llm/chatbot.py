@@ -16,6 +16,9 @@ from pi_bot.models import BotConfig
 
 logger = logging.getLogger(__name__)
 
+SHORT_TERM_MEMORY_FILE = DATA_DIRECTORY / "chat_history.json"
+LONG_TERM_MEMORY_FILE = DATA_DIRECTORY / "embeddings.json"
+
 
 class RoleType(StrEnum):
     """Role types for the chatbot."""
@@ -68,7 +71,7 @@ class MessageList(BaseModel):
     messages: list[Message] = []
     system_message: Message
     max_history: int
-    filepath: Path = DATA_DIRECTORY / "chat_history.json"
+    filepath: Path = SHORT_TERM_MEMORY_FILE
 
     @property
     def history(self) -> list[Message]:
@@ -120,6 +123,7 @@ class MessageList(BaseModel):
                 logger.info("[MessageList] No messages found in chat history.")
 
             self.messages = loaded_messages
+            logger.info("[MessageList] Loaded %d messages from chat history.", len(self.messages))
         else:
             logger.info("[MessageList] No chat history found at: %s", self.filepath)
 
@@ -136,6 +140,10 @@ class Chatbot:
         num_predict: int,
         max_history: int,
         system_prompt: str,
+        embeddings_model_name: str,
+        top_k: int,
+        min_similarity: float,
+        max_facts: int,
     ) -> None:
         """Initialize the chatbot with the given parameters.
 
@@ -146,6 +154,10 @@ class Chatbot:
         :param int num_predict: The number of predictions to generate.
         :param int max_history: The maximum number of messages to keep in history.
         :param str system_prompt: The system prompt to use for the chatbot.
+        :param str embeddings_model_name: The name of the embeddings model to use.
+        :param int top_k: The number of top similar facts to retrieve.
+        :param float min_similarity: The minimum similarity threshold for retrieving facts.
+        :param int max_facts: The maximum number of facts to retrieve.
         """
         if "localhost" in ollama_host:
             logger.info("[%s] Using LOCAL Ollama host.", self.label)
@@ -159,6 +171,11 @@ class Chatbot:
         self.temperature = temperature
         self.max_context_length = max_context_length
         self.num_predict = num_predict
+
+        self.embeddings_model_name = embeddings_model_name
+        self.top_k = top_k
+        self.min_similarity = min_similarity
+        self.max_facts = max_facts
 
         self.messages: MessageList = MessageList(
             system_message=Message.system_message(content=system_prompt), max_history=max_history
@@ -246,6 +263,10 @@ def debug(config: BotConfig) -> None:
         num_predict=config.llm.num_predict,
         max_history=config.llm.max_history,
         system_prompt=config.llm.system_prompt,
+        embeddings_model_name=config.llm.embeddings.model_name,
+        top_k=config.llm.embeddings.top_k,
+        min_similarity=config.llm.embeddings.min_similarity,
+        max_facts=config.llm.embeddings.max_facts,
     )
 
     try:
