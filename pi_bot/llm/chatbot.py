@@ -60,6 +60,42 @@ class Message(BaseModel):
         return cls(role=RoleType.USER, content=content)
 
 
+class MessageList(BaseModel):
+    """A list of messages in the chatbot conversation."""
+
+    messages: list[Message] = []
+    system_message: Message
+    max_history: int
+
+    @property
+    def history(self) -> list[Message]:
+        """Return the list of messages."""
+        return [self.system_message, *self.messages]
+
+    @property
+    def history_dump(self) -> list[dict]:
+        """Return the list of messages as dictionaries."""
+        return [message.model_dump() for message in self.history]
+
+    def add_message(self, message: Message) -> None:
+        """Add a message to the list.
+
+        :param Message message: The message to add.
+        """
+        logger.info("[MessageList] Adding %s message of length %d...", message.role, len(message.content))
+        self.messages.append(message)
+
+        while len(self.messages) > self.max_history:
+            self.remove_message(0)
+
+    def remove_message(self, index: int) -> None:
+        """Remove a message from the list by index.
+
+        :param int index: The index of the message to remove.
+        """
+        self.messages.pop(index)
+
+
 class Chatbot:
     """A chatbot that uses the Ollama API to generate responses."""
 
@@ -95,25 +131,15 @@ class Chatbot:
         self.temperature = temperature
         self.max_context_length = max_context_length
         self.num_predict = num_predict
-        self.max_history = max_history
-        self.system_prompt = system_prompt
 
-        self._messages: list[Message] = []
+        self.messages: MessageList = MessageList(
+            system_message=Message.system_message(content=system_prompt), max_history=max_history
+        )
 
     @property
     def label(self) -> str:
         """Get a human-readable label for the chatbot."""
         return self.__class__.__name__
-
-    @property
-    def system_message(self) -> Message:
-        """Return the system message for the chatbot."""
-        return Message.system_message(content=self.system_prompt)
-
-    @property
-    def messages(self) -> list[Message]:
-        """Return the list of messages in the conversation."""
-        return [self.system_message, *self._messages]
 
     @property
     def llm_options(self) -> dict:
@@ -140,24 +166,6 @@ class Chatbot:
                 yield sentence, parts[-1]
         yield "", parts[-1]
 
-    def _add_message(self, message: Message) -> None:
-        """Add a message to the conversation.
-
-        :param Message message: The message to add.
-        """
-        logger.info("[%s] Adding %s message of length %d...", self.label, message.role, len(message.content))
-        self._messages.append(message)
-
-        while len(self._messages) > self.max_history:
-            self._remove_message(0)
-
-    def _remove_message(self, index: int) -> None:
-        """Remove a message from the conversation by index.
-
-        :param int index: The index of the message to remove.
-        """
-        self._messages.pop(index)
-
     def chat(self, user_input: str) -> Generator[str]:
         """Generate a response from the chatbot given user input.
 
@@ -170,7 +178,7 @@ class Chatbot:
             user_message = Message.user_message(content=user_input)
             stream = self.client.chat(
                 model=self.model_name,
-                messages=[message.model_dump() for message in self.messages] + [user_message.model_dump()],
+                messages=[*self.messages.history_dump, user_message.model_dump()],
                 stream=True,
                 options=self.llm_options,
             )
@@ -194,8 +202,8 @@ class Chatbot:
             logger.exception("[%s] Error during chat generation!", self.label)
             raise
         else:
-            self._add_message(user_message)
-            self._add_message(assistant_message)
+            self.messages.add_message(user_message)
+            self.messages.add_message(assistant_message)
 
 
 def debug(config: BotConfig) -> None:
