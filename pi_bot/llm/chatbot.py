@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from collections.abc import Generator
@@ -110,19 +111,21 @@ class MessageList(BaseModel):
         """Save the chat history to a JSON file."""
         logger.info("[MessageList] Saving chat history to: %s", self.filepath)
         self.filepath.parent.mkdir(parents=True, exist_ok=True)
-        self.tmp_filepath.write_text(self.model_dump_json(), encoding="utf-8")
+        self.tmp_filepath.write_text(
+            self.model_dump_json(exclude={"system_message", "max_history", "filepath"}), encoding="utf-8"
+        )
         self.tmp_filepath.replace(self.filepath)
 
     def load(self) -> None:
         """Load the chat history from a JSON file."""
         if self.filepath.exists():
             logger.info("[MessageList] Loading chat history from: %s", self.filepath)
-            loaded = MessageList.model_validate_json(self.filepath.read_text(encoding="utf-8"))
+            messages = json.loads(self.filepath.read_text(encoding="utf-8")).get("messages", [])
 
-            if len(loaded_messages := loaded.messages) == 0:
+            if len(loaded_messages := messages) == 0:
                 logger.info("[MessageList] No messages found in chat history.")
 
-            self.messages = loaded_messages
+            self.messages = [Message.model_validate(message) for message in loaded_messages]
             logger.info("[MessageList] Loaded %d messages from chat history.", len(self.messages))
         else:
             logger.info("[MessageList] No chat history found at: %s", self.filepath)
