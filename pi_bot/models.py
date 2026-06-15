@@ -101,6 +101,17 @@ class AudioConfig(BaseModel):
 
 
 # LLM Configuration
+class EmbeddingsConfig(BaseModel):
+    """Configuration for text embeddings."""
+
+    model_name: str = Field(..., description="Name of the embedding model to use for vectorizing text.")
+    top_k: int = Field(..., description="Number of top similar memories to retrieve during search.", ge=1, le=100)
+    min_similarity: float = Field(
+        ..., description="Minimum cosine similarity (0.0-1.0) to consider a memory relevant.", ge=0.0, le=1.0
+    )
+    max_facts: int = Field(..., description="Maximum number of facts to store in memory.", ge=1, le=10000)
+
+
 class LLMConfig(BaseModel):
     """Configuration for the language model."""
 
@@ -113,44 +124,7 @@ class LLMConfig(BaseModel):
         ..., description="Maximum number of messages to keep in conversation history.", ge=1, le=100
     )
     system_prompt: str = Field(..., description="System prompt to guide the language model's behavior.")
-
-
-# Memory Configuration
-class EmbeddingsConfig(BaseModel):
-    """Configuration for text embeddings."""
-
-    model_name: str = Field(..., description="Name of the embedding model to use for vectorizing text.")
-    dimensions: int = Field(..., description="Dimensionality of the embedding vectors.", ge=1, le=4096)
-
-    @property
-    def model_path(self) -> Path:
-        """Get the path to the embedding model ONNX file."""
-        return Path("embeddings") / f"{self.model_name}.onnx"
-
-    @property
-    def tokenizer_path(self) -> Path:
-        """Get the path to the embedding model tokenizer configuration file."""
-        return f"{self.model_path.with_suffix('')}_tokenizer.json"
-
-
-class MemorySearchConfig(BaseModel):
-    """Configuration for memory search settings."""
-
-    top_k: int = Field(..., description="Number of top similar memories to retrieve during search.", ge=1, le=100)
-    min_similarity: float = Field(
-        ..., description="Minimum cosine similarity (0.0-1.0) to consider a memory relevant.", ge=0.0, le=1.0
-    )
-    max_facts: int = Field(..., description="Maximum number of facts to store in memory.", ge=1, le=10000)
-
-
-class MemoryConfig(BaseModel):
-    """Configuration for the Pi Bot's memory system."""
-
-    session_storage_directory: str = Field(..., description="Directory name to store session data and memory files.")
-    long_term_storage_directory: str = Field(..., description="Directory name to store long-term memory files.")
-    max_session_length: int = Field(..., description="Maximum number of messages to keep in short-term memory.", ge=1)
-    embeddings: EmbeddingsConfig = Field(..., description="Configuration for text embeddings.")
-    search: MemorySearchConfig = Field(..., description="Configuration for memory search settings.")
+    embeddings: EmbeddingsConfig = Field(..., description="Configuration for text embeddings used in memory search.")
 
 
 # Bot Behaviour
@@ -335,7 +309,6 @@ class BotConfig(BaseModel):
     gpio: GPIOConfig = Field(..., description="Configuration for GPIO pin mappings.")
     audio: AudioConfig = Field(..., description="Configuration for audio settings.")
     llm: LLMConfig = Field(..., description="Configuration for the language model.")
-    memory: MemoryConfig = Field(..., description="Configuration for the Pi Bot's memory system.")
     behaviour: BotBehaviourConfig = Field(
         ..., description="Configuration for the Pi Bot's behaviour and interaction settings."
     )

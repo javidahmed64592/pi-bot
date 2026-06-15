@@ -6,10 +6,12 @@ import logging
 import re
 from collections.abc import Generator
 from enum import StrEnum
+from pathlib import Path
 
 from ollama import Client
 from pydantic import BaseModel
 
+from pi_bot.config import DATA_DIRECTORY
 from pi_bot.models import BotConfig
 
 logger = logging.getLogger(__name__)
@@ -66,6 +68,7 @@ class MessageList(BaseModel):
     messages: list[Message] = []
     system_message: Message
     max_history: int
+    filepath: Path = DATA_DIRECTORY / "chat_history.json"
 
     @property
     def history(self) -> list[Message]:
@@ -76,6 +79,11 @@ class MessageList(BaseModel):
     def history_dump(self) -> list[dict]:
         """Return the list of messages as dictionaries."""
         return [message.model_dump() for message in self.history]
+
+    @property
+    def tmp_filepath(self) -> Path:
+        """Return the temporary file path for the chat history."""
+        return self.filepath.with_suffix(".tmp")
 
     def add_message(self, message: Message) -> None:
         """Add a message to the list.
@@ -94,6 +102,26 @@ class MessageList(BaseModel):
         :param int index: The index of the message to remove.
         """
         self.messages.pop(index)
+
+    def save(self) -> None:
+        """Save the chat history to a JSON file."""
+        logger.info("[MessageList] Saving chat history to: %s", self.filepath)
+        self.filepath.parent.mkdir(parents=True, exist_ok=True)
+        self.tmp_filepath.write_text(self.model_dump_json(), encoding="utf-8")
+        self.tmp_filepath.replace(self.filepath)
+
+    def load(self) -> None:
+        """Load the chat history from a JSON file."""
+        if self.filepath.exists():
+            logger.info("[MessageList] Loading chat history from: %s", self.filepath)
+            loaded = MessageList.model_validate_json(self.filepath.read_text(encoding="utf-8"))
+
+            if len(loaded_messages := loaded.messages) == 0:
+                logger.info("[MessageList] No messages found in chat history.")
+
+            self.messages = loaded_messages
+        else:
+            logger.info("[MessageList] No chat history found at: %s", self.filepath)
 
 
 class Chatbot:
@@ -135,6 +163,7 @@ class Chatbot:
         self.messages: MessageList = MessageList(
             system_message=Message.system_message(content=system_prompt), max_history=max_history
         )
+        self.messages.load()
 
     @property
     def label(self) -> str:
@@ -204,6 +233,7 @@ class Chatbot:
         else:
             self.messages.add_message(user_message)
             self.messages.add_message(assistant_message)
+            self.messages.save()
 
 
 def debug(config: BotConfig) -> None:

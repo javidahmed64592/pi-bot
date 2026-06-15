@@ -79,19 +79,8 @@ llm:
     - Only use this when it adds personality or clarity
     - Don't use emojis in the LCD text. Stick to simple symbols like (^_^), (◕‿◕), etc.
 
-# Memory Configuration
-memory:
-  session_storage_directory: "sessions"
-  long_term_storage_directory: "memory"
-  max_session_length: 20
-
-  # Embeddings for semantic search
   embeddings:
-    model_name: "all-MiniLM-L6-v2"
-    dimensions: 384
-
-  # Search configuration
-  search:
+    model_name: "embeddinggemma"
     top_k: 5              # Return top 5 relevant facts
     min_similarity: 0.7   # Minimum cosine similarity (0.0-1.0)
     max_facts: 1000       # Maximum facts to store
