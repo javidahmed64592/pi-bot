@@ -39,6 +39,8 @@ llm:
   ollama_host: "http://localhost:11434"
   temperature: 0.8
   max_context_length: 4096
+  num_predict: 256
+  max_history: 20
   system_prompt: |
     You are Pi Bot, a friendly AI desk companion running on a Raspberry Pi.
 

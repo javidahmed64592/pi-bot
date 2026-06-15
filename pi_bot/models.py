@@ -104,10 +104,14 @@ class AudioConfig(BaseModel):
 class LLMConfig(BaseModel):
     """Configuration for the language model."""
 
-    model_name: str = Field(..., description="Name of the language model to use for generating responses.")
     ollama_host: str = Field(..., description="URL of the Ollama server hosting the language model.")
+    model_name: str = Field(..., description="Name of the language model to use for generating responses.")
     temperature: float = Field(..., description="Sampling temperature for the language model.", ge=0.1, le=2.0)
     max_context_length: int = Field(..., description="Maximum context length for the language model.")
+    num_predict: int = Field(..., description="Number of predictions to generate for each input.", ge=1, le=1024)
+    max_history: int = Field(
+        ..., description="Maximum number of messages to keep in conversation history.", ge=1, le=100
+    )
     system_prompt: str = Field(..., description="System prompt to guide the language model's behavior.")
 
 

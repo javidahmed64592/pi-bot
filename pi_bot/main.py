@@ -14,6 +14,7 @@ from pi_bot.actuator.rgb_led import debug as rgb_led_debug
 from pi_bot.audio.microphone import debug as microphone_debug
 from pi_bot.audio.speaker import debug as speaker_debug
 from pi_bot.config import load_config
+from pi_bot.llm.chatbot import debug as chatbot_debug
 from pi_bot.sensor.pir import debug as pir_debug
 
 setup_default_logging()
@@ -30,6 +31,7 @@ class DebugOptions(StrEnum):
     LCD = auto()
     MICROPHONE = auto()
     SPEAKER = auto()
+    CHATBOT = auto()
 
 
 def main() -> None:
@@ -66,3 +68,5 @@ def debug() -> None:
             asyncio.run(microphone_debug(config=config))
         case DebugOptions.SPEAKER:
             asyncio.run(speaker_debug(config=config))
+        case DebugOptions.CHATBOT:
+            chatbot_debug(config=config)
