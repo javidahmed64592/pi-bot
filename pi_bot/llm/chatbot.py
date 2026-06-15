@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Generator
 from enum import StrEnum
 
@@ -123,6 +124,22 @@ class Chatbot:
             "num_predict": self.num_predict,
         }
 
+    @staticmethod
+    def _iter_sentences(buffer: str, chunk: str) -> Generator[tuple[str, str]]:
+        """Append chunk to buffer and yield (sentence, updated_buffer) for each complete sentence.
+
+        :param str buffer: The current incomplete sentence buffer.
+        :param str chunk: The latest token chunk from the LLM.
+        :return: Yields (sentence, remaining_buffer) tuples for each complete sentence found.
+        :rtype: Generator[tuple[str, str], None, None]
+        """
+        buffer += chunk
+        parts = re.split(r"(?<=[.!?])\s+", buffer)
+        for sentence in parts[:-1]:
+            if sentence := sentence.strip():
+                yield sentence, parts[-1]
+        yield "", parts[-1]
+
     def _add_message(self, message: Message) -> None:
         """Add a message to the conversation.
 
@@ -159,15 +176,22 @@ class Chatbot:
             )
 
             content = ""
+            buffer = ""
+
             for chunk in stream:
                 if chunk_content := chunk.message.content:
                     content += chunk_content
-                    yield chunk_content
+                    for sentence, remaining in self._iter_sentences(buffer, chunk_content):
+                        buffer = remaining
+                        if sentence:
+                            yield sentence
+
+            if remainder := buffer.strip():
+                yield remainder
 
             assistant_message = Message.assistant_message(content=content)
         except Exception:
-            error_msg = f"[{self.label}] Error during chat generation!"
-            logger.exception(error_msg)
+            logger.exception("[%s] Error during chat generation!", self.label)
             raise
         else:
             self._add_message(user_message)
@@ -190,6 +214,6 @@ def debug(config: BotConfig) -> None:
         while True:
             message = str(input("User: "))
             for chunk in chatbot.chat(user_input=message):
-                print(chunk, end="", flush=True)
+                print(chunk, end="\n", flush=True)
     except KeyboardInterrupt:
         logger.info("Chatbot debug stopped by user.")
