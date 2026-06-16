@@ -81,8 +81,10 @@ llm:
 
   embeddings:
     model_name: "embeddinggemma"
+    temperature: 0.0
     top_k: 5
-    min_similarity: 0.7
+    add_similarity_threshold: 0.8
+    retrieve_similarity_threshold: 0.3
     max_facts: 1000
 
 # Bot Behaviour

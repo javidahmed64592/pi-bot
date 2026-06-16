@@ -105,9 +105,13 @@ class EmbeddingsConfig(BaseModel):
     """Configuration for text embeddings."""
 
     model_name: str = Field(..., description="Name of the embedding model to use for vectorizing text.")
+    temperature: float = Field(..., description="Sampling temperature for the embedding model.", ge=0.0, le=1.0)
     top_k: int = Field(..., description="Number of top similar memories to retrieve during search.", ge=1, le=100)
-    min_similarity: float = Field(
-        ..., description="Minimum cosine similarity (0.0-1.0) to consider a memory relevant.", ge=0.0, le=1.0
+    add_similarity_threshold: float = Field(
+        ..., description="Similarity threshold for adding new facts to avoid duplicates.", ge=0.0, le=1.0
+    )
+    retrieve_similarity_threshold: float = Field(
+        ..., description="Similarity threshold for retrieving facts.", ge=0.0, le=1.0
     )
     max_facts: int = Field(..., description="Maximum number of facts to store in memory.", ge=1, le=10000)
 
