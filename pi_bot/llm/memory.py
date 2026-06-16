@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime
 import json
 import logging
+from collections.abc import Sequence
 from enum import StrEnum
 from pathlib import Path
 
@@ -148,7 +149,7 @@ class Fact(BaseModel):
     """A stored fact with its embedding vector."""
 
     text: str
-    embedding: list[float]
+    embedding: Sequence[float]
     created_at: str
 
 
@@ -170,11 +171,11 @@ class MemoryStore(BaseModel):
         return self.filepath.with_suffix(".tmp")
 
     @staticmethod
-    def _cosine_similarity(query: list[float], facts: list[list[float]]) -> np.ndarray:
+    def _cosine_similarity(query: Sequence[float], facts: list[Sequence[float]]) -> np.ndarray:
         """Compute cosine similarity between a query vector and a batch of fact vectors.
 
-        :param list[float] query: The query vector.
-        :param list[list[float]] facts: The list of fact vectors.
+        :param Sequence[float] query: The query vector.
+        :param list[Sequence[float]] facts: The list of fact vectors.
         :return: An array of cosine similarity scores.
         :rtype: np.ndarray
         """
@@ -212,11 +213,11 @@ class MemoryStore(BaseModel):
         self.facts = [Fact.model_validate(fact) for fact in loaded_facts]
         logger.info("[MemoryStore] Loaded %d facts.", len(self.facts))
 
-    def add_fact(self, text: str, embedding: list[float], similarity_threshold: float) -> None:
+    def add_fact(self, text: str, embedding: Sequence[float], similarity_threshold: float) -> None:
         """Add a new fact, avoiding exact and near-duplicate facts.
 
         :param str text: The text of the fact.
-        :param list[float] embedding: The embedding vector of the fact.
+        :param Sequence[float] embedding: The embedding vector of the fact.
         :param float similarity_threshold: Cosine similarity above which a fact is considered a duplicate.
         """
         if any(fact.text.strip().lower() == text.strip().lower() for fact in self.facts):
@@ -233,10 +234,12 @@ class MemoryStore(BaseModel):
         )
         logger.info("[MemoryStore] Stored new fact of length %d.", len(text))
 
-    def retrieve(self, query_embedding: list[float], top_k: int, min_similarity: float, max_facts: int) -> list[str]:
+    def retrieve(
+        self, query_embedding: Sequence[float], top_k: int, min_similarity: float, max_facts: int
+    ) -> list[str]:
         """Retrieve the most relevant facts for a given query embedding.
 
-        :param list[float] query_embedding: The embedding vector of the query.
+        :param Sequence[float] query_embedding: The embedding vector of the query.
         :param int top_k: The number of top similar facts to consider.
         :param float min_similarity: The minimum similarity threshold for retrieving facts.
         :param int max_facts: The maximum number of facts to retrieve.

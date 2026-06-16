@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Generator
+from collections.abc import Generator, Sequence
 
 from ollama import Client
 
@@ -114,12 +114,12 @@ class Chatbot:
                 yield sentence, parts[-1]
         yield "", parts[-1]
 
-    def _embed(self, inputs: list[str]) -> list[list[float]]:
+    def _embed(self, inputs: list[str]) -> Sequence[Sequence[float]]:
         """Generate embeddings for a list of texts.
 
         :param list[str] inputs: Texts to embed.
         :return: List of embedding vectors, one per input.
-        :rtype: list[list[float]]
+        :rtype: Sequence[Sequence[float]]
         """
         response = self.client.embed(
             model=self.embeddings_model_name,
