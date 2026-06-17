@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Generator, Sequence
+from collections.abc import Callable, Generator, Sequence
+from typing import Any
 
 from ollama import Client
+from pydantic import ValidationError
 
 from pi_bot.llm.memory import (
     EXTRACTOR_INSTRUCTIONS,
@@ -39,6 +41,7 @@ class Chatbot:
         add_similarity_threshold: float,
         retrieve_similarity_threshold: float,
         max_facts: int,
+        tools: list[Callable[[Any], str]],
     ) -> None:
         """Initialize the chatbot with the given parameters.
 
@@ -55,6 +58,7 @@ class Chatbot:
         :param float add_similarity_threshold: The similarity threshold for adding new facts to avoid duplicates.
         :param float retrieve_similarity_threshold: The similarity threshold for retrieving facts.
         :param int max_facts: The maximum number of facts to retrieve.
+        :param list[Callable[[Any], str]] tools: A list of tool functions that the chatbot can use.
         """
         if "localhost" in ollama_host:
             logger.info("[%s] Using LOCAL Ollama host.", self.label)
@@ -64,17 +68,22 @@ class Chatbot:
         self.client = Client(host=ollama_host)
         logger.info("[%s] Initialized Ollama client.", self.label)
 
+        # LLM parameters
         self.model_name = model_name
         self.temperature = temperature
         self.max_context_length = max_context_length
         self.num_predict = num_predict
 
+        # Embeddings parameters
         self.embeddings_model_name = embeddings_model_name
         self.embeddings_temperature = embeddings_temperature
         self.top_k = top_k
         self.add_similarity_threshold = add_similarity_threshold
         self.retrieve_similarity_threshold = retrieve_similarity_threshold
         self.max_facts = max_facts
+
+        # Tools
+        self.tools = tools
 
         self.messages = MessageList(
             system_message=Message.system_message(content=system_prompt), max_history=max_history
@@ -169,10 +178,14 @@ class Chatbot:
             options={"temperature": 0.1, "num_predict": 200},
         )
 
+        if not (response_content := response.message.content):
+            logger.warning("[%s] No content returned from fact extraction.", self.label)
+            return
+
         try:
-            extracted = ExtractedFacts.model_validate_json(response.message.content)
-        except ValueError:
-            logger.warning("[%s] Failed to parse fact extraction response: %s", self.label, response.message.content)
+            extracted = ExtractedFacts.model_validate_json(response_content)
+        except ValidationError:
+            logger.warning("[%s] Failed to parse fact extraction response: %s", self.label, response_content)
             return
 
         if not (new_facts := [fact.strip() for fact in extracted.facts if fact.strip()]):
@@ -212,6 +225,7 @@ class Chatbot:
             stream = self.client.chat(
                 model=self.model_name,
                 messages=[*history_copy.history_dump, user_message.model_dump()],
+                tools=self.tools,
                 stream=True,
                 options=self.llm_options,
             )
@@ -262,6 +276,7 @@ def debug(config: BotConfig) -> None:
         add_similarity_threshold=config.llm.embeddings.add_similarity_threshold,
         retrieve_similarity_threshold=config.llm.embeddings.retrieve_similarity_threshold,
         max_facts=config.llm.embeddings.max_facts,
+        tools=[],
     )
 
     try:
