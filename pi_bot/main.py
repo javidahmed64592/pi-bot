@@ -14,6 +14,7 @@ from pi_bot.actuator.rgb_led import debug as rgb_led_debug
 from pi_bot.audio.microphone import debug as microphone_debug
 from pi_bot.audio.speaker import debug as speaker_debug
 from pi_bot.config import load_config
+from pi_bot.controller.bot_controller import BotController
 from pi_bot.llm.chatbot import debug as chatbot_debug
 from pi_bot.sensor.pir import debug as pir_debug
 
@@ -36,9 +37,20 @@ class DebugOptions(StrEnum):
 
 def main() -> None:
     """Main function to run the Pi Bot."""
-    error_msg = "The main function is not implemented yet."
-    logger.error(error_msg)
-    raise NotImplementedError(error_msg)
+    logger.info("Loading configuration...")
+    config = load_config()
+
+    logger.info("Initializing BotController...")
+    bot_controller = BotController(config=config)
+
+    try:
+        logger.info("Starting the controller...")
+        asyncio.run(bot_controller.run())
+    except KeyboardInterrupt:
+        logger.info("Shutting down...")
+        asyncio.run(bot_controller.stop())
+
+    logger.info("Shutdown complete.")
 
 
 def debug() -> None:

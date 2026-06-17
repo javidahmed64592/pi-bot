@@ -15,15 +15,14 @@ logger = logging.getLogger(__name__)
 class BidirectionalComponent(ABC):
     """Base class for bidirectional components that both receive commands and emit events."""
 
-    def __init__(self, config: BotConfig, command_queue: asyncio.Queue, event_queue: asyncio.Queue) -> None:
+    def __init__(self, config: BotConfig, event_queue: asyncio.Queue) -> None:
         """Initialize the bidirectional component.
 
         :param BotConfig config: The bot configuration.
-        :param asyncio.Queue command_queue: Queue for receiving commands.
         :param asyncio.Queue event_queue: Queue for emitting events.
         """
         self.config = config
-        self.command_queue = command_queue
+        self.command_queue = asyncio.Queue()
         self.event_queue = event_queue
         self._running = False
 

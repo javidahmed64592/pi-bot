@@ -51,9 +51,9 @@ class SpeakerController:
 class SpeakerActuator(BidirectionalComponent):
     """Bidirectional component for controlling the speaker (TTS)."""
 
-    def __init__(self, config: BotConfig, command_queue: asyncio.Queue, event_queue: asyncio.Queue) -> None:
+    def __init__(self, config: BotConfig, event_queue: asyncio.Queue) -> None:
         """Initialize the speaker actuator with the specified configuration and queues."""
-        super().__init__(config=config, command_queue=command_queue, event_queue=event_queue)
+        super().__init__(config=config, event_queue=event_queue)
         self.speaker = SpeakerController(
             label="PiperTTS", model_path=MODELS_DIRECTORY / self.config.audio.piper.model_path
         )
@@ -100,9 +100,8 @@ class SpeakerActuator(BidirectionalComponent):
 async def debug(config: BotConfig) -> None:
     """Debug function to test the Piper TTS system."""
     logger.info("Initializing components...")
-    command_queue = asyncio.Queue()
     event_queue = asyncio.Queue()
-    speaker_actuator = SpeakerActuator(config=config, command_queue=command_queue, event_queue=event_queue)
+    speaker_actuator = SpeakerActuator(config=config, event_queue=event_queue)
 
     # Start the speaker's command processing loop in the background
     logger.info("Testing Piper TTS system...")
@@ -112,7 +111,7 @@ async def debug(config: BotConfig) -> None:
     # Step 1: Send command to speak text
     test_text = "Hello, this is a test of the Piper text-to-speech system."
     logger.info("Sending text: %s", test_text)
-    await command_queue.put(
+    await speaker_actuator.command_queue.put(
         Command(
             component=ComponentType.SPEAKER,
             command_type=CommandType.SPEAK_TEXT,
@@ -143,7 +142,7 @@ async def debug(config: BotConfig) -> None:
     event_queue.task_done()
 
     # Wait for all commands to be processed
-    await command_queue.join()
+    await speaker_actuator.command_queue.join()
 
     # Cleanup and stop the speaker task
     logger.info("Cleaning up...")

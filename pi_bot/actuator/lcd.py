@@ -172,7 +172,6 @@ class LCDController:
             self.set_backlight(False)
             if self.bus:
                 self.bus.close()
-                self.bus = None
             logger.info("[%s] Cleanup complete.", self.label)
         except Exception:
             logger.exception("[%s] Error during cleanup!", self.label)

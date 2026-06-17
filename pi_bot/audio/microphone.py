@@ -94,12 +94,12 @@ class MicrophoneController:
         self.pa.terminate()
 
 
-class MicrophoneActuator(BidirectionalComponent):
+class MicrophoneSensor(BidirectionalComponent):
     """Bidirectional component for controlling the microphone (wake word + STT)."""
 
-    def __init__(self, config: BotConfig, command_queue: asyncio.Queue, event_queue: asyncio.Queue) -> None:
-        """Initialize the microphone actuator with the specified configuration and queues."""
-        super().__init__(config=config, command_queue=command_queue, event_queue=event_queue)
+    def __init__(self, config: BotConfig, event_queue: asyncio.Queue) -> None:
+        """Initialize the microphone sensor with the specified configuration and queues."""
+        super().__init__(config=config, event_queue=event_queue)
         self.mic = MicrophoneController(
             label="VoskSTT",
             model_path=MODELS_DIRECTORY / self.config.audio.vosk.model_path,
@@ -111,7 +111,7 @@ class MicrophoneActuator(BidirectionalComponent):
 
     @property
     def component_type(self) -> ComponentType:
-        """Get the component type this actuator handles."""
+        """Get the component type this sensor handles."""
         return ComponentType.MICROPHONE
 
     def extra_tasks(self) -> list:
@@ -119,7 +119,7 @@ class MicrophoneActuator(BidirectionalComponent):
         return [self._audio_loop()]
 
     async def handle_command(self, command: Command) -> None:
-        """Handle commands for the microphone actuator."""
+        """Handle commands for the microphone sensor."""
         match command.command_type:
             case CommandType.START_LISTENING:
                 logger.info("[%s] Resuming stream for wake word detection...", self.label)
@@ -166,7 +166,7 @@ class MicrophoneActuator(BidirectionalComponent):
                     await asyncio.sleep(0.05)
 
     def stop(self) -> None:
-        """Signal the actuator to stop processing commands and audio."""
+        """Signal the sensor to stop processing commands and audio."""
         super().stop()
         self.mic.cleanup()
 
@@ -174,19 +174,18 @@ class MicrophoneActuator(BidirectionalComponent):
 async def debug(config: BotConfig) -> None:
     """Debug function to test the microphone (wake word detection + transcription)."""
     logger.info("Initializing components...")
-    command_queue = asyncio.Queue()
     event_queue = asyncio.Queue()
-    mic_actuator = MicrophoneActuator(config=config, command_queue=command_queue, event_queue=event_queue)
+    mic_sensor = MicrophoneSensor(config=config, event_queue=event_queue)
 
     # Start the microphone monitoring loop in the background
     logger.info("Testing Vosk STT system...")
-    task = asyncio.create_task(mic_actuator.run())
+    task = asyncio.create_task(mic_sensor.run())
     await asyncio.sleep(1.0)
 
     try:
         while True:
             # Step 1: Wait for wake word
-            logger.info("Listening for wake words: %s", mic_actuator.mic.wake_words)
+            logger.info("Listening for wake words: %s", mic_sensor.mic.wake_words)
             event: Event = await event_queue.get()
             event_queue.task_done()
             logger.info("Event received: %s", event.event_type)
@@ -196,7 +195,7 @@ async def debug(config: BotConfig) -> None:
 
             # Step 2: Send command to start transcription
             logger.info("Sending command: %s", CommandType.START_TRANSCRIPTION)
-            await command_queue.put(
+            await mic_sensor.command_queue.put(
                 Command(
                     component=ComponentType.MICROPHONE,
                     command_type=CommandType.START_TRANSCRIPTION,
@@ -218,7 +217,7 @@ async def debug(config: BotConfig) -> None:
 
             # Step 4: Send command to stop listening
             logger.info("Sending command: %s", CommandType.STOP_LISTENING)
-            await command_queue.put(
+            await mic_sensor.command_queue.put(
                 Command(
                     component=ComponentType.MICROPHONE,
                     command_type=CommandType.STOP_LISTENING,
@@ -232,7 +231,7 @@ async def debug(config: BotConfig) -> None:
 
             # Step 6: Resume wake word detection
             logger.info("Sending command: %s", CommandType.START_LISTENING)
-            await command_queue.put(
+            await mic_sensor.command_queue.put(
                 Command(
                     component=ComponentType.MICROPHONE,
                     command_type=CommandType.START_LISTENING,
@@ -245,7 +244,7 @@ async def debug(config: BotConfig) -> None:
 
     # Cleanup and stop the microphone task
     logger.info("Cleaning up...")
-    mic_actuator.stop()
+    mic_sensor.stop()
     task.cancel()
 
     # Wait for the task to finish cancellation
