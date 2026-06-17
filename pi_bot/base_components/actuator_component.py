@@ -13,14 +13,13 @@ logger = logging.getLogger(__name__)
 class ActuatorComponent(ABC):
     """Base class for actuator components."""
 
-    def __init__(self, config: BotConfig, command_queue: asyncio.Queue) -> None:
+    def __init__(self, config: BotConfig) -> None:
         """Initialize the actuator component.
 
         :param BotConfig config: The bot configuration.
-        :param asyncio.Queue command_queue: The command queue for this actuator.
         """
         self.config = config
-        self.command_queue = command_queue
+        self.command_queue = asyncio.Queue()
         self._running = False
 
     @property

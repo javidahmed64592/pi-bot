@@ -56,9 +56,9 @@ class BuzzerController:
 class BuzzerActuator(ActuatorComponent):
     """Actuator component for controlling the bot's buzzer."""
 
-    def __init__(self, config: BotConfig, command_queue: asyncio.Queue) -> None:
+    def __init__(self, config: BotConfig) -> None:
         """Initialize the buzzer actuator with the specified configuration and command queue."""
-        super().__init__(config=config, command_queue=command_queue)
+        super().__init__(config=config)
         self.buzzer = BuzzerController(label="Buzzer", pin=config.gpio.buzzer_pin)
 
     @property
@@ -83,8 +83,7 @@ async def debug(config: BotConfig) -> None:
     off_time = 3.0
 
     logger.info("Initializing components...")
-    command_queue = asyncio.Queue()
-    buzzer_actuator = BuzzerActuator(config=config, command_queue=command_queue)
+    buzzer_actuator = BuzzerActuator(config=config)
 
     # Start the actuator's command processing loop in the background
     logger.info("Testing buzzer tunes...")
@@ -92,7 +91,7 @@ async def debug(config: BotConfig) -> None:
     await asyncio.sleep(off_time)
 
     logger.info("1/5 - Startup Tune")
-    await command_queue.put(
+    await buzzer_actuator.command_queue.put(
         Command(
             component=ComponentType.BUZZER,
             command_type=CommandType.PLAY_TUNE,
@@ -102,7 +101,7 @@ async def debug(config: BotConfig) -> None:
     await asyncio.sleep(off_time)
 
     logger.info("2/5 - Shutdown Tune")
-    await command_queue.put(
+    await buzzer_actuator.command_queue.put(
         Command(
             component=ComponentType.BUZZER,
             command_type=CommandType.PLAY_TUNE,
@@ -112,7 +111,7 @@ async def debug(config: BotConfig) -> None:
     await asyncio.sleep(off_time)
 
     logger.info("3/5 - State Up Tune")
-    await command_queue.put(
+    await buzzer_actuator.command_queue.put(
         Command(
             component=ComponentType.BUZZER,
             command_type=CommandType.PLAY_TUNE,
@@ -122,7 +121,7 @@ async def debug(config: BotConfig) -> None:
     await asyncio.sleep(off_time)
 
     logger.info("4/5 - State Down Tune")
-    await command_queue.put(
+    await buzzer_actuator.command_queue.put(
         Command(
             component=ComponentType.BUZZER,
             command_type=CommandType.PLAY_TUNE,
@@ -132,7 +131,7 @@ async def debug(config: BotConfig) -> None:
     await asyncio.sleep(off_time)
 
     logger.info("5/5 - Error Tune")
-    await command_queue.put(
+    await buzzer_actuator.command_queue.put(
         Command(
             component=ComponentType.BUZZER,
             command_type=CommandType.PLAY_TUNE,
@@ -143,7 +142,7 @@ async def debug(config: BotConfig) -> None:
 
     # Wait for all commands to be processed
     logger.info("Waiting for command queue to finish processing...")
-    await command_queue.join()
+    await buzzer_actuator.command_queue.join()
 
     # Stop the actuator task
     buzzer_actuator.stop()

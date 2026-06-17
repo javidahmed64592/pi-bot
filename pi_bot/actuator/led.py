@@ -75,9 +75,9 @@ class LEDController:
 class LEDActuator(ActuatorComponent):
     """Actuator component for controlling the bot's status LEDs."""
 
-    def __init__(self, config: BotConfig, command_queue: asyncio.Queue) -> None:
-        """Initialize the LED actuator with the specified configuration and command queue."""
-        super().__init__(config=config, command_queue=command_queue)
+    def __init__(self, config: BotConfig) -> None:
+        """Initialize the LED actuator with the specified configuration."""
+        super().__init__(config=config)
         self.green_leds = [
             LEDController(label="Green LED 1", pin=self.config.gpio.led_pins.green_1),
             LEDController(label="Green LED 2", pin=self.config.gpio.led_pins.green_2),
@@ -135,8 +135,7 @@ async def debug(config: BotConfig) -> None:
     off_time = 2.0
 
     logger.info("Initializing components...")
-    command_queue = asyncio.Queue()
-    led_actuator = LEDActuator(config=config, command_queue=command_queue)
+    led_actuator = LEDActuator(config=config)
 
     def turn_off_all() -> None:
         for led in [*led_actuator.green_leds, *led_actuator.red_leds]:
@@ -148,7 +147,7 @@ async def debug(config: BotConfig) -> None:
     await asyncio.sleep(off_time)
 
     logger.info("1/6 - Loading")
-    await command_queue.put(
+    await led_actuator.command_queue.put(
         Command(
             component=ComponentType.STATUS_LED,
             command_type=CommandType.SET_LED_PATTERN,
@@ -163,7 +162,7 @@ async def debug(config: BotConfig) -> None:
     await asyncio.sleep(off_time)
 
     logger.info("2/6 - Ready")
-    await command_queue.put(
+    await led_actuator.command_queue.put(
         Command(
             component=ComponentType.STATUS_LED,
             command_type=CommandType.SET_LED_PATTERN,
@@ -178,7 +177,7 @@ async def debug(config: BotConfig) -> None:
     await asyncio.sleep(off_time)
 
     logger.info("3/6 - Observing")
-    await command_queue.put(
+    await led_actuator.command_queue.put(
         Command(
             component=ComponentType.STATUS_LED,
             command_type=CommandType.SET_LED_PATTERN,
@@ -193,7 +192,7 @@ async def debug(config: BotConfig) -> None:
     await asyncio.sleep(off_time)
 
     logger.info("4/6 - Silent")
-    await command_queue.put(
+    await led_actuator.command_queue.put(
         Command(
             component=ComponentType.STATUS_LED,
             command_type=CommandType.SET_LED_PATTERN,
@@ -208,7 +207,7 @@ async def debug(config: BotConfig) -> None:
     await asyncio.sleep(off_time)
 
     logger.info("5/6 - Active")
-    await command_queue.put(
+    await led_actuator.command_queue.put(
         Command(
             component=ComponentType.STATUS_LED,
             command_type=CommandType.SET_LED_PATTERN,
@@ -223,7 +222,7 @@ async def debug(config: BotConfig) -> None:
     await asyncio.sleep(off_time)
 
     logger.info("6/6 - Error")
-    await command_queue.put(
+    await led_actuator.command_queue.put(
         Command(
             component=ComponentType.STATUS_LED,
             command_type=CommandType.SET_LED_PATTERN,
@@ -236,7 +235,7 @@ async def debug(config: BotConfig) -> None:
 
     # Wait for all commands to be processed
     logger.info("Waiting for command queue to finish processing...")
-    await command_queue.join()
+    await led_actuator.command_queue.join()
 
     # Stop the actuator task
     led_actuator.stop()

@@ -181,9 +181,9 @@ class LCDController:
 class LCDActuator(ActuatorComponent):
     """Actuator component for controlling the bot's LCD."""
 
-    def __init__(self, config: BotConfig, command_queue: asyncio.Queue) -> None:
-        """Initialize the LCD actuator with the specified configuration and command queue."""
-        super().__init__(config=config, command_queue=command_queue)
+    def __init__(self, config: BotConfig) -> None:
+        """Initialize the LCD actuator with the specified configuration."""
+        super().__init__(config=config)
         self.lcd = LCDController(
             label="LCD",
             address=self.config.gpio.lcd.i2c_address,
@@ -230,8 +230,7 @@ async def debug(config: BotConfig) -> None:
     off_time = 2.0
 
     logger.info("Initializing components...")
-    command_queue = asyncio.Queue()
-    lcd_actuator = LCDActuator(config=config, command_queue=command_queue)
+    lcd_actuator = LCDActuator(config=config)
 
     # Start the actuator's command processing loop in the background
     logger.info("Testing LCD display...")
@@ -239,7 +238,7 @@ async def debug(config: BotConfig) -> None:
     await asyncio.sleep(off_time)
 
     logger.info("1/1 - Startup Message")
-    await command_queue.put(
+    await lcd_actuator.command_queue.put(
         Command(
             component=ComponentType.LCD,
             command_type=CommandType.WRITE_LCD_TEXT,
@@ -249,7 +248,7 @@ async def debug(config: BotConfig) -> None:
 
     # Wait for all commands to be processed
     logger.info("Waiting for command queue to finish processing...")
-    await command_queue.join()
+    await lcd_actuator.command_queue.join()
 
     # Stop the actuator task
     lcd_actuator.stop()
