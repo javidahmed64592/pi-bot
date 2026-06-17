@@ -37,8 +37,8 @@ class LCDLineConfig(BaseModel):
 class LCDMessageConfig(BaseModel):
     """Configuration for messages to display on the LCD."""
 
-    line_1: LCDLineConfig = Field(..., description="Configuration for the first line of the LCD.")
-    line_2: LCDLineConfig = Field(..., description="Configuration for the second line of the LCD.")
+    line_1: LCDLineConfig = Field(..., description="Configuration for the first line of the LCD.", max_length=16)
+    line_2: LCDLineConfig = Field(..., description="Configuration for the second line of the LCD.", max_length=16)
 
 
 class LCDGPIOConfig(BaseModel):
