@@ -30,23 +30,12 @@ logger = logging.getLogger(__name__)
 class ConversationState(StrEnum):
     """Enumeration of conversation states for the Pi Bot."""
 
-    # Base states
     LOADING = auto()
     READY = auto()
     OBSERVING = auto()
     SILENT = auto()
-
-    # Active states
     LISTENING = auto()
     SPEAKING = auto()
-
-    @property
-    def is_active(self) -> bool:
-        """Check if the conversation state is active (LISTENING or SPEAKING).
-
-        :return: True if the state is active, False otherwise.
-        """
-        return self in {ConversationState.LISTENING, ConversationState.SPEAKING}
 
 
 class BotController(BaseController):
@@ -209,11 +198,11 @@ class BotController(BaseController):
                 # LEDs display listening pattern, buzzer plays state up tune
                 # Microphone starts transcription
                 await self.send_command(
-                    create_set_rgb_led_pattern_command(pattern_config=self.config.rgb_led_patterns.active.listening)
+                    create_set_rgb_led_pattern_command(pattern_config=self.config.rgb_led_patterns.listening)
                 )
                 await self.send_command(
                     create_set_led_pattern_command(
-                        pattern_config=self.config.status_led_patterns.active, on_led=StatusLEDType.GREEN
+                        pattern_config=self.config.status_led_patterns.listening, on_led=StatusLEDType.GREEN
                     )
                 )
                 await self.send_command(create_play_tune_command(tune=self.config.buzzer_tunes.state_up_tune))
@@ -224,11 +213,11 @@ class BotController(BaseController):
                 # LEDs display speaking pattern, buzzer plays state up tune
                 # Microphone stops listening
                 await self.send_command(
-                    create_set_rgb_led_pattern_command(pattern_config=self.config.rgb_led_patterns.active.speaking)
+                    create_set_rgb_led_pattern_command(pattern_config=self.config.rgb_led_patterns.speaking)
                 )
                 await self.send_command(
                     create_set_led_pattern_command(
-                        pattern_config=self.config.status_led_patterns.active, on_led=StatusLEDType.GREEN
+                        pattern_config=self.config.status_led_patterns.speaking, on_led=StatusLEDType.GREEN
                     )
                 )
                 await self.send_command(create_play_tune_command(tune=self.config.buzzer_tunes.state_up_tune))

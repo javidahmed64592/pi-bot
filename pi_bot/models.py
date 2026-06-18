@@ -161,13 +161,9 @@ class BotBehaviourConfig(BaseModel):
     """Configuration for the Pi Bot's behaviour and interaction settings."""
 
     passive_observation_interval: tuple[int, int] = Field(
-        ..., description="Random time interval (in seconds) for checking passive observations.", example=(60, 300)
-    )
-    conversation_timeout: int = Field(
-        ..., description="Seconds of silence before considering conversation ended.", ge=1
+        ..., description="Random time interval (in seconds) for checking passive observations."
     )
     idle_timeout: int = Field(..., description="Seconds before going idle if no presence detected.", ge=1)
-    do_not_disturb_duration: int = Field(..., description="Seconds to stay in DND mode after user leaves.", ge=1)
     observation_probability: ObservationProbability = Field(
         ..., description="Configuration for observation probability weighting."
     )
