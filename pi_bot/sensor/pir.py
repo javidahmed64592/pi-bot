@@ -33,7 +33,7 @@ class PIRController:
         :return: True if motion is detected, False otherwise.
         :rtype: bool
         """
-        return self.sensor.motion_detected
+        return self.sensor.is_active
 
 
 class PIRSensor(SensorComponent):

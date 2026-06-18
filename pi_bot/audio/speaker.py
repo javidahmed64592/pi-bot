@@ -70,7 +70,14 @@ class SpeakerActuator(BidirectionalComponent):
         """Handle commands for the speaker actuator."""
         match command.command_type:
             case CommandType.SPEAK_TEXT:
-                payload: SpeakTextPayload = command.payload
+                if not isinstance(payload := command.payload, SpeakTextPayload):
+                    logger.error(
+                        "[%s] Invalid payload type: expected %s, got %s",
+                        self.label,
+                        SpeakTextPayload.__name__,
+                        type(payload).__name__,
+                    )
+                    return
 
                 await asyncio.to_thread(self.speaker.speak, payload.text)
 

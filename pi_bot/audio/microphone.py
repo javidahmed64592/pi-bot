@@ -212,7 +212,14 @@ async def debug(config: BotConfig) -> None:
             if event.event_type != EventType.SPEECH_CAPTURED:
                 continue
 
-            payload: SpeechCapturedPayload = event.payload
+            if not isinstance(payload := event.payload, SpeechCapturedPayload):
+                logger.error(
+                    "[Microphone Debug] Invalid payload type: expected %s, got %s",
+                    SpeechCapturedPayload.__name__,
+                    type(payload).__name__,
+                )
+                continue
+
             logger.info("Captured text: '%s'", payload.transcribed_text)
 
             # Step 4: Send command to stop listening

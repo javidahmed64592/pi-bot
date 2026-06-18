@@ -128,7 +128,15 @@ class RGBLEDActuator(ActuatorComponent):
         super().handle_command(command)
         match command.command_type:
             case CommandType.SET_LED_PATTERN:
-                payload: SetRGBLEDPatternPayload = command.payload
+                if not isinstance(payload := command.payload, SetRGBLEDPatternPayload):
+                    logger.error(
+                        "[%s] Invalid payload type: expected %s, got %s",
+                        self.label,
+                        SetRGBLEDPatternPayload.__name__,
+                        type(payload).__name__,
+                    )
+                    return
+
                 self.rgb_led.apply_pattern(pattern_config=payload.pattern_config)
             case _:
                 error_msg = f"Unsupported command type: {command.command_type}"

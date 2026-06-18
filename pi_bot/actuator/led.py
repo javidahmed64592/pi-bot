@@ -97,7 +97,15 @@ class LEDActuator(ActuatorComponent):
         super().handle_command(command)
         match command.command_type:
             case CommandType.SET_LED_PATTERN:
-                payload: SetLEDPatternPayload = command.payload
+                if not isinstance(payload := command.payload, SetLEDPatternPayload):
+                    logger.error(
+                        "[%s] Invalid payload type: expected %s, got %s",
+                        self.label,
+                        SetLEDPatternPayload.__name__,
+                        type(payload).__name__,
+                    )
+                    return
+
                 self._apply_status_led_pattern(on_led_type=payload.on_led_type, pattern_config=payload.pattern_config)
             case _:
                 error_msg = f"Unsupported command type: {command.command_type}"

@@ -198,7 +198,14 @@ class LCDActuator(ActuatorComponent):
         super().handle_command(command)
         match command.command_type:
             case CommandType.WRITE_LCD_TEXT:
-                payload: WriteLCDTextPayload = command.payload
+                if not isinstance(payload := command.payload, WriteLCDTextPayload):
+                    logger.error(
+                        "[%s] Invalid payload type: expected %s, got %s",
+                        self.label,
+                        WriteLCDTextPayload.__name__,
+                        type(payload).__name__,
+                    )
+                    return
 
                 # Turn on backlight
                 self.lcd.set_backlight(True)

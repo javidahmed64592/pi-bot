@@ -71,7 +71,15 @@ class BuzzerActuator(ActuatorComponent):
         super().handle_command(command)
         match command.command_type:
             case CommandType.PLAY_TUNE:
-                payload: PlayTunePayload = command.payload
+                if not isinstance(payload := command.payload, PlayTunePayload):
+                    logger.error(
+                        "[%s] Invalid payload type: expected %s, got %s",
+                        self.label,
+                        PlayTunePayload.__name__,
+                        type(payload).__name__,
+                    )
+                    return
+
                 self.buzzer.play_tune(tune=payload.tune)
             case _:
                 error_msg = f"Unsupported command type: {command.command_type}"
