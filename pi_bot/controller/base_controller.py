@@ -106,6 +106,14 @@ class BaseController(ABC):
         await queue.put(command)
         logger.debug("[BaseController] Sent command to %s: %s", command.command_type, command.component)
 
+    @abstractmethod
+    async def handle_event(self, event: Event) -> None:
+        """Handle a single event.
+
+        :param Event event: The event to handle.
+        """
+        pass
+
     async def handle_events(self) -> None:
         """Handle events."""
         while True:
@@ -116,14 +124,6 @@ class BaseController(ABC):
                 logger.exception("[BaseController] Error handling event!")
             finally:
                 self.event_queue.task_done()
-
-    @abstractmethod
-    async def handle_event(self, event: Event) -> None:
-        """Handle a single event.
-
-        :param Event event: The event to handle.
-        """
-        pass
 
     @abstractmethod
     async def update(self) -> None:
