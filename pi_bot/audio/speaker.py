@@ -69,16 +69,9 @@ class SpeakerActuator(BidirectionalComponent):
             case CommandType.SPEAK_TEXT:
                 payload: SpeakTextPayload = command.payload
 
-                await self.emit_event(
-                    Event(
-                        component=self.component_type,
-                        event_type=EventType.STARTED_SPEAKING,
-                        payload=Payload(),
-                    )
-                )
-
                 await asyncio.to_thread(self.speaker.speak, payload.text)
 
+            case CommandType.FINISH_SPEAKING:
                 await self.emit_event(
                     Event(
                         component=self.component_type,
@@ -108,7 +101,7 @@ async def debug(config: BotConfig) -> None:
     task = asyncio.create_task(speaker_actuator.run())
     await asyncio.sleep(1.0)
 
-    # Step 1: Send command to speak text
+    # Send command to speak text
     test_text = "Hello, this is a test of the Piper text-to-speech system."
     logger.info("Sending text: %s", test_text)
     await speaker_actuator.command_queue.put(
@@ -119,18 +112,7 @@ async def debug(config: BotConfig) -> None:
         )
     )
 
-    # Step 2: Wait for Piper to start speaking
-    logger.info("Waiting for event: %s", EventType.STARTED_SPEAKING)
-    event: Event = await event_queue.get()
-    if event.event_type != EventType.STARTED_SPEAKING:
-        error_msg = f"Unexpected event received: {event.event_type} from {event.component}"
-        logger.error(error_msg)
-        raise RuntimeError(error_msg)
-
-    logger.info("Event received: %s", event.event_type)
-    event_queue.task_done()
-
-    # Step 3: Wait for Piper to stop speaking
+    # Wait for Piper to stop speaking
     logger.info("Waiting for event: %s", EventType.STOPPED_SPEAKING)
     event: Event = await event_queue.get()
     if event.event_type != EventType.STOPPED_SPEAKING:

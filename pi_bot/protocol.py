@@ -35,23 +35,43 @@ class StatusLEDType(StrEnum):
 class EventType(StrEnum):
     """Enumeration of event types emitted by sensors."""
 
+    # PIR
     MOTION_DETECTED = auto()
+
+    # Microphone
     WAKE_WORD_DETECTED = auto()
     SPEECH_CAPTURED = auto()
-    STARTED_SPEAKING = auto()
+
+    # Speaker
     STOPPED_SPEAKING = auto()
+
+    # Chatbot
+    LEFT_DESK = auto()
+    DECIDED_TO_OBSERVE = auto()
+    DECIDED_TO_SPEAK = auto()
+    DECIDED_TO_NOT_SPEAK = auto()
 
 
 class CommandType(StrEnum):
     """Enumeration of command types sent to actuators."""
 
+    # LED
     SET_LED_PATTERN = auto()
+
+    # Buzzer
     PLAY_TUNE = auto()
+
+    # LCD
     WRITE_LCD_TEXT = auto()
+
+    # Microphone
     START_LISTENING = auto()
     START_TRANSCRIPTION = auto()
     STOP_LISTENING = auto()
+
+    # Speaker
     SPEAK_TEXT = auto()
+    FINISH_SPEAKING = auto()
 
 
 # Base classes

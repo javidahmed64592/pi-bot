@@ -164,7 +164,7 @@ async def debug(config: BotConfig) -> None:  # noqa: PLR0915
     task = asyncio.create_task(rgb_led_actuator.run())
     await asyncio.sleep(off_time)
 
-    logger.info("1/9 - Loading")
+    logger.info("1/7 - Loading")
     await rgb_led_actuator.command_queue.put(
         Command(
             component=ComponentType.RGB_LED,
@@ -177,7 +177,7 @@ async def debug(config: BotConfig) -> None:  # noqa: PLR0915
     turn_off_all()
     await asyncio.sleep(off_time)
 
-    logger.info("2/9 - Ready")
+    logger.info("2/7 - Ready")
     await rgb_led_actuator.command_queue.put(
         Command(
             component=ComponentType.RGB_LED,
@@ -190,7 +190,7 @@ async def debug(config: BotConfig) -> None:  # noqa: PLR0915
     turn_off_all()
     await asyncio.sleep(off_time)
 
-    logger.info("3/9 - Observing")
+    logger.info("3/7 - Observing")
     await rgb_led_actuator.command_queue.put(
         Command(
             component=ComponentType.RGB_LED,
@@ -203,7 +203,7 @@ async def debug(config: BotConfig) -> None:  # noqa: PLR0915
     turn_off_all()
     await asyncio.sleep(off_time)
 
-    logger.info("4/9 - Silent")
+    logger.info("4/7 - Silent")
     await rgb_led_actuator.command_queue.put(
         Command(
             component=ComponentType.RGB_LED,
@@ -216,7 +216,7 @@ async def debug(config: BotConfig) -> None:  # noqa: PLR0915
     turn_off_all()
     await asyncio.sleep(off_time)
 
-    logger.info("5/9 - Active (Listening)")
+    logger.info("5/7 - Active (Listening)")
     await rgb_led_actuator.command_queue.put(
         Command(
             component=ComponentType.RGB_LED,
@@ -229,20 +229,7 @@ async def debug(config: BotConfig) -> None:  # noqa: PLR0915
     turn_off_all()
     await asyncio.sleep(off_time)
 
-    logger.info("6/9 - Active (Thinking)")
-    await rgb_led_actuator.command_queue.put(
-        Command(
-            component=ComponentType.RGB_LED,
-            command_type=CommandType.SET_LED_PATTERN,
-            payload=SetRGBLEDPatternPayload(pattern_config=config.rgb_led_patterns.active.thinking),
-        )
-    )
-    await asyncio.sleep(on_time)
-
-    turn_off_all()
-    await asyncio.sleep(off_time)
-
-    logger.info("7/9 - Active (Speaking)")
+    logger.info("6/7 - Active (Speaking)")
     await rgb_led_actuator.command_queue.put(
         Command(
             component=ComponentType.RGB_LED,
@@ -255,20 +242,7 @@ async def debug(config: BotConfig) -> None:  # noqa: PLR0915
     turn_off_all()
     await asyncio.sleep(off_time)
 
-    logger.info("8/9 - Active (Learning)")
-    await rgb_led_actuator.command_queue.put(
-        Command(
-            component=ComponentType.RGB_LED,
-            command_type=CommandType.SET_LED_PATTERN,
-            payload=SetRGBLEDPatternPayload(pattern_config=config.rgb_led_patterns.active.learning),
-        )
-    )
-    await asyncio.sleep(on_time)
-
-    turn_off_all()
-    await asyncio.sleep(off_time)
-
-    logger.info("9/9 - Error")
+    logger.info("7/7 - Error")
     await rgb_led_actuator.command_queue.put(
         Command(
             component=ComponentType.RGB_LED,

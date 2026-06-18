@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from pi_bot.base_components.actuator_component import ActuatorComponent
 from pi_bot.base_components.bidirectional_component import BidirectionalComponent
 from pi_bot.base_components.sensor_component import SensorComponent
-from pi_bot.protocol import Command, ComponentType
+from pi_bot.protocol import Command, ComponentType, Event
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ class BaseController(ABC):
 
         self.actuators: list[ActuatorComponent] = []
         self.sensors: list[SensorComponent] = []
-        self.bidirectional: list[BidirectionalComponent] = []
+        self.bidirectionals: list[BidirectionalComponent] = []
 
         self.tasks: list[asyncio.Task] = []
 
@@ -50,31 +50,25 @@ class BaseController(ABC):
 
         :param list[BidirectionalComponent] components: The bidirectional components to register.
         """
-        self.bidirectional.extend(components)
+        self.bidirectionals.extend(components)
         for component in components:
             self.command_queues[component.component_type] = component.command_queue
             logger.info("[BaseController] Registered bidirectional component: %s", component.label)
 
-    async def start(self) -> None:
-        """Start all registered components in non-blocking mode."""
-        logger.info("[BaseController] Starting all components...")
+    def start_components(self, components: list[ActuatorComponent | SensorComponent | BidirectionalComponent]) -> None:
+        """Start the given components in non-blocking mode.
 
-        for actuator in self.actuators:
-            task = asyncio.create_task(actuator.run())
-            self.tasks.append(task)
-            logger.info("[BaseController] Started actuator task: %s", actuator.label)
-
-        for sensor in self.sensors:
-            task = asyncio.create_task(sensor.run())
-            self.tasks.append(task)
-            logger.info("[BaseController] Started sensor task: %s", sensor.label)
-
-        for component in self.bidirectional:
+        :param list[ActuatorComponent | SensorComponent | BidirectionalComponent] components: The components to start.
+        """
+        for component in components:
             task = asyncio.create_task(component.run())
             self.tasks.append(task)
-            logger.info("[BaseController] Started bidirectional task: %s", component.label)
+            logger.info("[BaseController] Started component task: %s", component.label)
 
-        logger.info("[BaseController] All components ready!")
+    @abstractmethod
+    async def start(self) -> None:
+        """Custom boot sequence."""
+        pass
 
     async def stop(self) -> None:
         """Stop all components and wait for graceful shutdown."""
@@ -86,7 +80,7 @@ class BaseController(ABC):
         for sensor in self.sensors:
             sensor.stop()
 
-        for component in self.bidirectional:
+        for component in self.bidirectionals:
             component.stop()
 
         for task in self.tasks:
@@ -110,6 +104,25 @@ class BaseController(ABC):
         await queue.put(command)
         logger.debug("[BaseController] Sent command to %s: %s", command.command_type, command.component)
 
+    async def handle_events(self) -> None:
+        """Handle events."""
+        while True:
+            event: Event = await self.event_queue.get()
+            try:
+                await self.handle_event(event=event)
+            except Exception:
+                logger.exception("[BaseController] Error handling event!")
+            finally:
+                self.event_queue.task_done()
+
+    @abstractmethod
+    def handle_event(self, event: Event) -> None:
+        """Handle a single event.
+
+        :param Event event: The event to handle.
+        """
+        pass
+
     @abstractmethod
     async def update(self) -> None:
         """Update the controller's state."""
@@ -118,6 +131,7 @@ class BaseController(ABC):
     async def run(self) -> None:
         """Run the central controller's main loop."""
         try:
+            self.tasks.append(asyncio.create_task(self.handle_events()))
             await self.start()
 
             while True:

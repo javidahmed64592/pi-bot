@@ -95,7 +95,7 @@ async def debug(config: BotConfig) -> None:
         Command(
             component=ComponentType.BUZZER,
             command_type=CommandType.PLAY_TUNE,
-            payload=PlayTunePayload(tune=config.buzzer_tunes.startup_tune),
+            payload=PlayTunePayload(tune=config.buzzer_tunes.startup_tune),  # TODO: Make this StrEnum
         )
     )
     await asyncio.sleep(off_time)

@@ -158,23 +158,11 @@ rgb_led_patterns:
       colours:
       - {red: 255, green: 154, blue: 0}  # Orange
 
-    thinking:
-      pattern: "pulse"
-      interval: 1.0
-      colours:
-      - {red: 0, green: 191, blue: 255}  # Blue
-
     speaking:
       pattern: "solid"
       interval: 0.0
       colours:
       - {red: 0, green: 255, blue: 65}   # Green
-
-    learning:
-      pattern: "blink"
-      interval: 1.0
-      colours:
-      - {red: 191, green: 0, blue: 255}  # Purple
 
   error:
     pattern: "blink"

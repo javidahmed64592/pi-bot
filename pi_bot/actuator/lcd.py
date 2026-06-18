@@ -170,8 +170,7 @@ class LCDController:
         """Clean up I2C bus resources."""
         try:
             self.set_backlight(False)
-            if self.bus:
-                self.bus.close()
+            self.bus.close()
             logger.info("[%s] Cleanup complete.", self.label)
         except Exception:
             logger.exception("[%s] Error during cleanup!", self.label)

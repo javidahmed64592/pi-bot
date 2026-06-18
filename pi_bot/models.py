@@ -210,9 +210,7 @@ class RGBLEDActiveStateConfig(BaseModel):
     """Configuration for RGB patterns for active conversation sub-states."""
 
     listening: RGBLEDPatternConfig = Field(..., description="LED pattern configuration for the 'listening' state.")
-    thinking: RGBLEDPatternConfig = Field(..., description="LED pattern configuration for the 'thinking' state.")
     speaking: RGBLEDPatternConfig = Field(..., description="LED pattern configuration for the 'speaking' state.")
-    learning: RGBLEDPatternConfig = Field(..., description="LED pattern configuration for the 'learning' state.")
 
 
 class RGBLEDStateConfig(BaseModel):

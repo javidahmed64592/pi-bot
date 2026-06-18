@@ -48,9 +48,6 @@ def main() -> None:
         asyncio.run(bot_controller.run())
     except KeyboardInterrupt:
         logger.info("Shutting down...")
-        asyncio.run(bot_controller.stop())
-
-    logger.info("Shutdown complete.")
 
 
 def debug() -> None:
