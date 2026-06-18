@@ -274,10 +274,15 @@ class BotController(BaseController):
                 # Send speech to chatbot
                 await self._set_conversation_state(state=ConversationState.SPEAKING)
 
-                if not self._validate_payload_type(event.payload, SpeechCapturedPayload):
+                if not isinstance(payload := event.payload, SpeechCapturedPayload):
+                    logger.error(
+                        "[BotController] Invalid payload type: expected %s, got %s",
+                        SpeechCapturedPayload.__name__,
+                        type(payload).__name__,
+                    )
                     return
 
-                for chunk in self.chatbot.chat(user_input=event.payload.transcribed_text):
+                for chunk in self.chatbot.chat(user_input=payload.transcribed_text):
                     await self.send_command(create_speak_text_command(text=chunk))
 
                 await self.send_command(create_finish_speaking_command())
