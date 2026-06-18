@@ -4,6 +4,7 @@ import asyncio
 import logging
 from pathlib import Path
 
+import numpy as np
 import pyaudio
 from piper import PiperVoice
 
@@ -28,18 +29,20 @@ class SpeakerController:
         self.voice = PiperVoice.load(model_path)
         self.pa = pyaudio.PyAudio()
         self.stream = self.pa.open(
-            format=pyaudio.paInt16,
-            channels=1,
-            rate=self.voice.config.sample_rate,
-            output=True,
+            format=pyaudio.paInt16, channels=1, rate=self.voice.config.sample_rate, output=True, frames_per_buffer=4096
         )
         logger.info("[%s] SpeakerController initialized with model: %s", self.label, model_path)
 
     def speak(self, text: str) -> None:
         """Convert text to speech and play it through the audio output."""
         logger.info("[%s] Speaking text of length: %d", self.label, len(text))
+
         for chunk in self.voice.synthesize(text):
             self.stream.write(chunk.audio_int16_bytes)
+
+        silence_samples = int(self.voice.config.sample_rate * 0.5)
+        silence = np.zeros(silence_samples, dtype=np.int16).tobytes()
+        self.stream.write(silence)
 
     def cleanup(self) -> None:
         """Clean up audio resources."""
@@ -102,17 +105,30 @@ async def debug(config: BotConfig) -> None:
     await asyncio.sleep(1.0)
 
     # Send command to speak text
-    test_text = "Hello, this is a test of the Piper text-to-speech system."
-    logger.info("Sending text: %s", test_text)
+    sentences = [
+        "Hello, I am Piper, your personal assistant.",
+        "I can convert text to speech using my voice model.",
+        "This is a test of the text-to-speech system.",
+    ]
+    for sentence in sentences:
+        logger.info("Sending text: %s", sentence)
+        await speaker_actuator.command_queue.put(
+            Command(
+                component=ComponentType.SPEAKER,
+                command_type=CommandType.SPEAK_TEXT,
+                payload=SpeakTextPayload(text=sentence),
+            )
+        )
+
+    # Wait for Piper to stop speaking then send the finish speaking command
     await speaker_actuator.command_queue.put(
         Command(
             component=ComponentType.SPEAKER,
-            command_type=CommandType.SPEAK_TEXT,
-            payload=SpeakTextPayload(text=test_text),
+            command_type=CommandType.FINISH_SPEAKING,
+            payload=Payload(),
         )
     )
 
-    # Wait for Piper to stop speaking
     logger.info("Waiting for event: %s", EventType.STOPPED_SPEAKING)
     event: Event = await event_queue.get()
     if event.event_type != EventType.STOPPED_SPEAKING:
