@@ -173,70 +173,6 @@ class BotBehaviourConfig(BaseModel):
     )
 
 
-# LED Configurations
-class LEDPattern(StrEnum):
-    """Predefined LED patterns for the Pi Bot."""
-
-    OFF = "off"
-    SOLID = "solid"
-    PULSE = "pulse"
-    BLINK = "blink"
-    GRADIENT = "gradient"
-    RAINBOW = "rainbow"
-
-
-class RGBColour(BaseModel):
-    """Configuration for RGB LED colours."""
-
-    red: int = Field(..., description="Red component of the RGB colour (0-255).", ge=0, le=255)
-    green: int = Field(..., description="Green component of the RGB colour (0-255).", ge=0, le=255)
-    blue: int = Field(..., description="Blue component of the RGB colour (0-255).", ge=0, le=255)
-
-
-class LEDPatternConfig(BaseModel):
-    """Configuration for LED patterns."""
-
-    pattern: LEDPattern = Field(..., description="LED pattern to display.")
-    interval: float = Field(..., description="Interval in seconds for pattern cycle.", ge=0.0, le=10.0)
-
-
-class RGBLEDPatternConfig(LEDPatternConfig):
-    """Configuration for RGB LED patterns."""
-
-    colours: list[RGBColour] = Field(..., description="RGB colours to use for the LED pattern.")
-
-
-class RGBLEDActiveStateConfig(BaseModel):
-    """Configuration for RGB patterns for active conversation sub-states."""
-
-    listening: RGBLEDPatternConfig = Field(..., description="LED pattern configuration for the 'listening' state.")
-    speaking: RGBLEDPatternConfig = Field(..., description="LED pattern configuration for the 'speaking' state.")
-
-
-class RGBLEDStateConfig(BaseModel):
-    """Configuration for RGB patterns for different bot states."""
-
-    loading: RGBLEDPatternConfig = Field(..., description="LED pattern configuration for the 'loading' state.")
-    ready: RGBLEDPatternConfig = Field(..., description="LED pattern configuration for the 'ready' state.")
-    observing: RGBLEDPatternConfig = Field(..., description="LED pattern configuration for the 'observing' state.")
-    silent: RGBLEDPatternConfig = Field(..., description="LED pattern configuration for the 'silent' state.")
-    active: RGBLEDActiveStateConfig = Field(
-        ..., description="LED pattern configuration for active conversation sub-states."
-    )
-    error: RGBLEDPatternConfig = Field(..., description="LED pattern configuration for the 'error' state.")
-
-
-class StatusLEDStateConfig(BaseModel):
-    """Configuration for patterns for the status LEDs."""
-
-    loading: LEDPatternConfig = Field(..., description="LED pattern configuration for the 'loading' state.")
-    ready: LEDPatternConfig = Field(..., description="LED pattern configuration for the 'ready' state.")
-    observing: LEDPatternConfig = Field(..., description="LED pattern configuration for the 'observing' state.")
-    silent: LEDPatternConfig = Field(..., description="LED pattern configuration for the 'silent' state.")
-    active: LEDPatternConfig = Field(..., description="LED pattern configuration for the 'active' conversation state.")
-    error: LEDPatternConfig = Field(..., description="LED pattern configuration for the 'error' state.")
-
-
 # Buzzer Configuration
 class MusicalNote(StrEnum):
     """Predefined musical notes for the buzzer."""
@@ -304,6 +240,63 @@ class LCDConfig(BaseModel):
     startup_message: LCDMessageConfig = Field(..., description="Configuration for the startup message on the LCD.")
 
 
+# LED Configurations
+class LEDPattern(StrEnum):
+    """Predefined LED patterns for the Pi Bot."""
+
+    OFF = "off"
+    SOLID = "solid"
+    PULSE = "pulse"
+    BLINK = "blink"
+    GRADIENT = "gradient"
+    RAINBOW = "rainbow"
+
+
+class RGBColour(BaseModel):
+    """Configuration for RGB LED colours."""
+
+    red: int = Field(..., description="Red component of the RGB colour (0-255).", ge=0, le=255)
+    green: int = Field(..., description="Green component of the RGB colour (0-255).", ge=0, le=255)
+    blue: int = Field(..., description="Blue component of the RGB colour (0-255).", ge=0, le=255)
+
+
+class LEDPatternConfig(BaseModel):
+    """Configuration for LED patterns."""
+
+    pattern: LEDPattern = Field(..., description="LED pattern to display.")
+    interval: float = Field(..., description="Interval in seconds for pattern cycle.", ge=0.0, le=10.0)
+
+
+class RGBLEDPatternConfig(LEDPatternConfig):
+    """Configuration for RGB LED patterns."""
+
+    colours: list[RGBColour] = Field(..., description="RGB colours to use for the LED pattern.")
+
+
+class StatusLEDStateConfig(BaseModel):
+    """Configuration for patterns for the status LEDs."""
+
+    loading: LEDPatternConfig = Field(..., description="LED pattern configuration for the 'loading' state.")
+    ready: LEDPatternConfig = Field(..., description="LED pattern configuration for the 'ready' state.")
+    observing: LEDPatternConfig = Field(..., description="LED pattern configuration for the 'observing' state.")
+    silent: LEDPatternConfig = Field(..., description="LED pattern configuration for the 'silent' state.")
+    listening: LEDPatternConfig = Field(..., description="LED pattern configuration for the 'listening' state.")
+    speaking: LEDPatternConfig = Field(..., description="LED pattern configuration for the 'speaking' state.")
+    error: LEDPatternConfig = Field(..., description="LED pattern configuration for the 'error' state.")
+
+
+class RGBLEDStateConfig(BaseModel):
+    """Configuration for RGB patterns for different bot states."""
+
+    loading: RGBLEDPatternConfig = Field(..., description="LED pattern configuration for the 'loading' state.")
+    ready: RGBLEDPatternConfig = Field(..., description="LED pattern configuration for the 'ready' state.")
+    observing: RGBLEDPatternConfig = Field(..., description="LED pattern configuration for the 'observing' state.")
+    silent: RGBLEDPatternConfig = Field(..., description="LED pattern configuration for the 'silent' state.")
+    listening: RGBLEDPatternConfig = Field(..., description="LED pattern configuration for the 'listening' state.")
+    speaking: RGBLEDPatternConfig = Field(..., description="LED pattern configuration for the 'speaking' state.")
+    error: RGBLEDPatternConfig = Field(..., description="LED pattern configuration for the 'error' state.")
+
+
 # Main Bot Configuration
 class BotConfig(BaseModel):
     """Main configuration model for the Pi Bot."""
@@ -314,14 +307,14 @@ class BotConfig(BaseModel):
     behaviour: BotBehaviourConfig = Field(
         ..., description="Configuration for the Pi Bot's behaviour and interaction settings."
     )
-    rgb_led_patterns: RGBLEDStateConfig = Field(
-        ..., description="Configuration for RGB LED patterns for different bot states."
-    )
+    buzzer_tunes: BuzzerTunesConfig = Field(..., description="Configuration for musical tunes to play on the buzzer.")
+    lcd: LCDConfig = Field(..., description="Configuration for the LCD display.")
     status_led_patterns: StatusLEDStateConfig = Field(
         ..., description="Configuration for patterns for the status LEDs."
     )
-    buzzer_tunes: BuzzerTunesConfig = Field(..., description="Configuration for musical tunes to play on the buzzer.")
-    lcd: LCDConfig = Field(..., description="Configuration for the LCD display.")
+    rgb_led_patterns: RGBLEDStateConfig = Field(
+        ..., description="Configuration for RGB LED patterns for different bot states."
+    )
 
     @classmethod
     def from_yaml(cls, filepath: Path) -> BotConfig:

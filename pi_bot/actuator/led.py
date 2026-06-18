@@ -137,7 +137,7 @@ class LEDActuator(ActuatorComponent):
             led.apply_pattern(pattern_config=LEDPatternConfig(pattern=LEDPattern.OFF, interval=0.0))
 
 
-async def debug(config: BotConfig) -> None:
+async def debug(config: BotConfig) -> None:  # noqa: PLR0915
     """Debug function to test the status LEDs."""
     on_time = 5.0
     off_time = 2.0
@@ -154,7 +154,7 @@ async def debug(config: BotConfig) -> None:
     task = asyncio.create_task(led_actuator.run())
     await asyncio.sleep(off_time)
 
-    logger.info("1/6 - Loading")
+    logger.info("1/7 - Loading")
     await led_actuator.command_queue.put(
         Command(
             component=ComponentType.STATUS_LED,
@@ -169,7 +169,7 @@ async def debug(config: BotConfig) -> None:
     turn_off_all()
     await asyncio.sleep(off_time)
 
-    logger.info("2/6 - Ready")
+    logger.info("2/7 - Ready")
     await led_actuator.command_queue.put(
         Command(
             component=ComponentType.STATUS_LED,
@@ -184,7 +184,7 @@ async def debug(config: BotConfig) -> None:
     turn_off_all()
     await asyncio.sleep(off_time)
 
-    logger.info("3/6 - Observing")
+    logger.info("3/7 - Observing")
     await led_actuator.command_queue.put(
         Command(
             component=ComponentType.STATUS_LED,
@@ -199,7 +199,7 @@ async def debug(config: BotConfig) -> None:
     turn_off_all()
     await asyncio.sleep(off_time)
 
-    logger.info("4/6 - Silent")
+    logger.info("4/7 - Silent")
     await led_actuator.command_queue.put(
         Command(
             component=ComponentType.STATUS_LED,
@@ -214,13 +214,13 @@ async def debug(config: BotConfig) -> None:
     turn_off_all()
     await asyncio.sleep(off_time)
 
-    logger.info("5/6 - Active")
+    logger.info("5/7 - Listening")
     await led_actuator.command_queue.put(
         Command(
             component=ComponentType.STATUS_LED,
             command_type=CommandType.SET_LED_PATTERN,
             payload=SetLEDPatternPayload(
-                pattern_config=config.status_led_patterns.active, on_led_type=StatusLEDType.GREEN
+                pattern_config=config.status_led_patterns.listening, on_led_type=StatusLEDType.GREEN
             ),
         )
     )
@@ -229,7 +229,22 @@ async def debug(config: BotConfig) -> None:
     turn_off_all()
     await asyncio.sleep(off_time)
 
-    logger.info("6/6 - Error")
+    logger.info("6/7 - Speaking")
+    await led_actuator.command_queue.put(
+        Command(
+            component=ComponentType.STATUS_LED,
+            command_type=CommandType.SET_LED_PATTERN,
+            payload=SetLEDPatternPayload(
+                pattern_config=config.status_led_patterns.speaking, on_led_type=StatusLEDType.GREEN
+            ),
+        )
+    )
+    await asyncio.sleep(on_time)
+
+    turn_off_all()
+    await asyncio.sleep(off_time)
+
+    logger.info("7/7 - Error")
     await led_actuator.command_queue.put(
         Command(
             component=ComponentType.STATUS_LED,

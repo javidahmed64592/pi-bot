@@ -26,10 +26,10 @@ class DebugOptions(StrEnum):
     """Enumeration of debug options for the Pi Bot."""
 
     PIR = auto()
-    RGB_LED = auto()
-    LED = auto()
     BUZZER = auto()
     LCD = auto()
+    LED = auto()
+    RGB_LED = auto()
     MICROPHONE = auto()
     SPEAKER = auto()
     CHATBOT = auto()
@@ -65,14 +65,14 @@ def debug() -> None:
     match args.component:
         case DebugOptions.PIR:
             asyncio.run(pir_debug(config=config))
-        case DebugOptions.RGB_LED:
-            asyncio.run(rgb_led_debug(config=config))
-        case DebugOptions.LED:
-            asyncio.run(led_debug(config=config))
         case DebugOptions.BUZZER:
             asyncio.run(buzzer_debug(config=config))
         case DebugOptions.LCD:
             asyncio.run(lcd_debug(config=config))
+        case DebugOptions.LED:
+            asyncio.run(led_debug(config=config))
+        case DebugOptions.RGB_LED:
+            asyncio.run(rgb_led_debug(config=config))
         case DebugOptions.MICROPHONE:
             asyncio.run(microphone_debug(config=config))
         case DebugOptions.SPEAKER:

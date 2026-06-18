@@ -78,9 +78,7 @@ llm:
 # Bot Behaviour
 behaviour:
   passive_observation_interval: [300, 900]  # seconds for random observation checks
-  conversation_timeout: 10  # seconds of silence
   idle_timeout: 1800  # seconds before going idle
-  do_not_disturb_duration: 3600  # seconds to stay in DND mode after user leaves
 
   # Observation probability weighting
   # Formula: base + (presence_bonus) + (interaction_bonus), capped at ceiling
@@ -95,89 +93,6 @@ behaviour:
       minutes_per_step: 15.0  # +bonus every X minutes of silence
       max_steps: 3.0          # cap at X steps (steps * minutes per step = max time for full bonus)
       bonus_per_step: 0.10    # +X% per step
-
-# RGB LED Configuration (StateBased lighting mode)
-# Each state can have a custom pattern and color [R, G, B] (0-255)
-#
-# Available patterns:
-#   - off: No light
-#   - solid: Static color
-#   - pulse: Smooth fade in/out
-#   - blink: Quick on/off
-#   - gradient: Transition between colors
-#   - rainbow: Cycle through rainbow
-#
-# Color examples:
-#   Red:    [255, 0, 64]   Yellow: [255, 243, 0]   White:  [255, 255, 255]
-#   Green:  [0, 255, 65]   Cyan:   [0, 255, 255]   Off:    [0, 0, 0]
-#   Blue:   [0, 191, 255]  Purple: [191, 0, 255]   Orange: [255, 154, 0]
-#
-rgb_led_patterns:
-  loading:
-    pattern: "pulse"
-    interval: 2.0
-    colours:
-    - {red: 255, green: 154, blue: 0}   # Orange
-
-  # Top-level conversation states
-  ready:
-    pattern: "pulse"
-    interval: 2.0
-    colours:
-    - {red: 0, green: 255, blue: 65}     # Green
-
-  observing:
-    pattern: "pulse"
-    interval: 1.0
-    colours:
-    - {red: 0, green: 191, blue: 255}    # Blue
-
-  silent:
-    pattern: "pulse"
-    interval: 3.0
-    colours:
-    - {red: 255, green: 0, blue: 64}     # Red
-
-  # Active conversation sub-states
-  active:
-    listening:
-      pattern: "pulse"
-      interval: 3.0
-      colours:
-      - {red: 255, green: 154, blue: 0}  # Orange
-
-    speaking:
-      pattern: "solid"
-      interval: 0.0
-      colours:
-      - {red: 0, green: 255, blue: 65}   # Green
-
-  error:
-    pattern: "blink"
-    interval: 0.5
-    colours:
-    - {red: 255, green: 0, blue: 64}     # Red
-
-# Status LED Patterns (single-color LEDs, pattern only)
-status_led_patterns:
-  loading:
-    pattern: "pulse"
-    interval: 2.0
-  ready:
-    pattern: "solid"
-    interval: 0.0
-  observing:
-    pattern: "pulse"
-    interval: 2.0
-  silent:
-    pattern: "pulse"
-    interval: 4.0
-  active:
-    pattern: "solid"
-    interval: 0.0
-  error:
-    pattern: "blink"
-    interval: 0.5
 
 # Buzzer Configuration
 buzzer_tunes:
@@ -207,3 +122,78 @@ lcd:
     line_2:
       text: "Starting up..."
       column: 0
+
+# LED Configuration
+#
+# Available patterns:
+#   - off: No light
+#   - solid: Static color
+#   - pulse: Smooth fade in/out
+#   - blink: Quick on/off
+#   - gradient: Transition between colors
+#   - rainbow: Cycle through rainbow
+status_led_patterns:
+  loading:
+    pattern: "pulse"
+    interval: 2.0
+  ready:
+    pattern: "solid"
+    interval: 0.0
+  observing:
+    pattern: "pulse"
+    interval: 2.0
+  silent:
+    pattern: "pulse"
+    interval: 4.0
+  listening:
+    pattern: "solid"
+    interval: 0.0
+  speaking:
+    pattern: "solid"
+    interval: 0.0
+  error:
+    pattern: "blink"
+    interval: 0.5
+
+rgb_led_patterns:
+  loading:
+    pattern: "pulse"
+    interval: 2.0
+    colours:
+    - {red: 255, green: 154, blue: 0}
+
+  ready:
+    pattern: "pulse"
+    interval: 2.0
+    colours:
+    - {red: 0, green: 255, blue: 65}
+
+  observing:
+    pattern: "pulse"
+    interval: 1.0
+    colours:
+    - {red: 0, green: 191, blue: 255}
+
+  silent:
+    pattern: "pulse"
+    interval: 3.0
+    colours:
+    - {red: 255, green: 0, blue: 64}
+
+  listening:
+    pattern: "pulse"
+    interval: 3.0
+    colours:
+    - {red: 255, green: 154, blue: 0}
+
+  speaking:
+    pattern: "solid"
+    interval: 0.0
+    colours:
+    - {red: 0, green: 255, blue: 65}
+
+  error:
+    pattern: "blink"
+    interval: 0.5
+    colours:
+    - {red: 255, green: 0, blue: 64}
