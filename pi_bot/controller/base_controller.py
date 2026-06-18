@@ -55,7 +55,9 @@ class BaseController(ABC):
             self.command_queues[component.component_type] = component.command_queue
             logger.info("[BaseController] Registered bidirectional component: %s", component.label)
 
-    def start_components(self, components: list[ActuatorComponent | SensorComponent | BidirectionalComponent]) -> None:
+    def start_components(
+        self, components: list[ActuatorComponent] | list[SensorComponent] | list[BidirectionalComponent]
+    ) -> None:
         """Start the given components in non-blocking mode.
 
         :param list[ActuatorComponent | SensorComponent | BidirectionalComponent] components: The components to start.
@@ -116,7 +118,7 @@ class BaseController(ABC):
                 self.event_queue.task_done()
 
     @abstractmethod
-    def handle_event(self, event: Event) -> None:
+    async def handle_event(self, event: Event) -> None:
         """Handle a single event.
 
         :param Event event: The event to handle.
