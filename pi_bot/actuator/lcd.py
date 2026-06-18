@@ -44,7 +44,7 @@ class LCDController:
             temp |= 0x08
         else:
             temp &= 0xF7
-        self.bus.write_byte(self.address, temp)  # type: ignore[union-attr]
+        self.bus.write_byte(self.address, temp)
 
     def _send_command(self, command: int) -> None:
         """Send a command to the LCD.
@@ -100,7 +100,7 @@ class LCDController:
             self._send_command(0x0C)  # Enable display without cursor
             sleep(0.005)
             self._send_command(0x01)  # Clear Screen
-            self.bus.write_byte(self.address, 0x08)  # type: ignore[union-attr]
+            self.bus.write_byte(self.address, 0x08)
             logger.info("[%s] Display initialized successfully.", self.label)
         except Exception:
             logger.exception("[%s] Failed to initialize display!", self.label)
@@ -161,7 +161,7 @@ class LCDController:
                 byte_to_write = 0x00
 
         try:
-            self.bus.write_byte(self.address, byte_to_write)  # type: ignore[union-attr]
+            self.bus.write_byte(self.address, byte_to_write)
             self.backlight_enabled = enabled
         except Exception:
             logger.exception("[%s] Error setting backlight!", self.label)
