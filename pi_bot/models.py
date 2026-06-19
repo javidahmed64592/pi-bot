@@ -68,12 +68,6 @@ class VoskConfig(BaseModel):
     model_name: str = Field(..., description="Name of the Vosk model to use for speech recognition.")
     sample_rate: int = Field(..., description="Audio sample rate in Hz.", ge=8000, le=48000)
     chunk_size: int = Field(..., description="Size of audio chunks to read from the microphone.", ge=1024, le=8192)
-    silence_timeout: float = Field(
-        ...,
-        description="Silence duration (in seconds) to end speech capture when no speech has been captured at all.",
-        ge=5.0,
-        le=30.0,
-    )
     wake_words: list[str] = Field(..., description="List of wake phrases to activate the bot.")
 
     @property

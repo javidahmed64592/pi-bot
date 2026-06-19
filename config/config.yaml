@@ -25,7 +25,6 @@ audio:
     model_name: "vosk-model-en-us-0.22"
     sample_rate: 16000
     chunk_size: 4096
-    silence_timeout: 10.0
     wake_words:
       - "hey"
 
