@@ -210,6 +210,17 @@ class Chatbot:
         logger.info("[%s] Retrieved %d relevant facts for observation.", self.label, len(facts))
         return "\n\nRelevant things you know about the user:\n" + "\n".join(f"- {fact}" for fact in facts)
 
+    def _get_augmented_system_message(self, memory_block: str) -> Message:
+        """Return a copy of the system message with the memory block appended.
+
+        :param str memory_block: The memory block to append.
+        :return: A new Message object with the augmented content.
+        :rtype: Message
+        """
+        augmented_system = self.messages.system_message.model_copy()
+        augmented_system.content += memory_block
+        return augmented_system
+
     def _build_observation_context(self, time_of_day: str, minutes_at_desk: int, minutes_since_interaction: int) -> str:
         """Build the observation context prompt for proactive conversation.
 
@@ -239,13 +250,11 @@ class Chatbot:
         """
         logger.info("[%s] Sending message to chatbot...", self.label)
         try:
-            augmented_system = self.messages.system_message.model_copy()
+            history_copy = self.messages.model_copy()
 
             if relevant_facts := self._retrieve_relevant_facts(user_input):
-                augmented_system.content += self._create_memory_block(relevant_facts)
-
-            history_copy = self.messages.model_copy()
-            history_copy.system_message = augmented_system
+                augmented_system = self._get_augmented_system_message(self._create_memory_block(relevant_facts))
+                history_copy.system_message = augmented_system
 
             user_message = Message.user_message(content=user_input)
             stream = self.client.chat(
@@ -296,7 +305,7 @@ class Chatbot:
         """
         logger.info("[%s] Generating observation...", self.label)
         try:
-            augmented_system = self.messages.system_message.model_copy()
+            history_copy = self.messages.model_copy()
 
             observation_prompt = self._build_observation_context(
                 time_of_day=time_of_day,
@@ -305,17 +314,13 @@ class Chatbot:
             )
 
             if relevant_facts := self._retrieve_relevant_facts(observation_prompt):
-                augmented_system.content += self._create_memory_block(relevant_facts)
+                augmented_system = self._get_augmented_system_message(self._create_memory_block(relevant_facts))
+                history_copy.system_message = augmented_system
 
-            history_copy = self.messages.model_copy()
-            history_copy.system_message = augmented_system
-
+            observation_message = Message.user_message(content=observation_prompt)
             stream = self.client.chat(
                 model=self.model_name,
-                messages=[
-                    *history_copy.history_dump,
-                    Message.user_message(content=observation_prompt).model_dump(),
-                ],
+                messages=[*history_copy.history_dump, observation_message.model_dump()],
                 stream=True,
                 options=self.llm_options,
             )
