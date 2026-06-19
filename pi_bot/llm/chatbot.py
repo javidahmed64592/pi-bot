@@ -257,9 +257,12 @@ class Chatbot:
                 history_copy.system_message = augmented_system
 
             user_message = Message.user_message(content=user_input)
+
+            messages = [*history_copy.history_dump, user_message.model_dump()]
+
             stream = self.client.chat(
                 model=self.model_name,
-                messages=[*history_copy.history_dump, user_message.model_dump()],
+                messages=messages,
                 tools=self.tools,
                 stream=True,
                 options=self.llm_options,
@@ -307,20 +310,23 @@ class Chatbot:
         try:
             history_copy = self.messages.model_copy()
 
-            observation_prompt = self._build_observation_context(
+            observation_context = self._build_observation_context(
                 time_of_day=time_of_day,
                 minutes_at_desk=minutes_at_desk,
                 minutes_since_interaction=minutes_since_interaction,
             )
 
-            if relevant_facts := self._retrieve_relevant_facts(observation_prompt):
+            if relevant_facts := self._retrieve_relevant_facts(observation_context):
                 augmented_system = self._get_augmented_system_message(self._create_memory_block(relevant_facts))
                 history_copy.system_message = augmented_system
 
-            observation_message = Message.user_message(content=observation_prompt)
+            observation_message = Message.user_message(content=observation_context)
+
+            messages = [*history_copy.history_dump, observation_message.model_dump()]
+
             stream = self.client.chat(
                 model=self.model_name,
-                messages=[*history_copy.history_dump, observation_message.model_dump()],
+                messages=messages,
                 stream=True,
                 options=self.llm_options,
             )
