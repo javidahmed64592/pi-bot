@@ -233,14 +233,11 @@ class BotController(BaseController):
     async def _run_observation(self) -> None:
         """Collect context and generate a proactive message."""
         now = BotController.get_current_timestamp()
-        now_dt = datetime.datetime.fromtimestamp(now, tz=datetime.UTC)
-
         minutes_at_desk = int((now - self._last_user_presence_timestamp) / 60)
         minutes_since_interaction = int((now - self._last_interaction_timestamp) / 60)
 
         sentences = list(
             self.chatbot.observe(
-                time_of_day=now_dt.strftime("%H:%M"),
                 minutes_at_desk=minutes_at_desk,
                 minutes_since_interaction=minutes_since_interaction,
             )

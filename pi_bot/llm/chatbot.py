@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Callable, Generator, Sequence
+from datetime import UTC, datetime
 from typing import Any
 
 from ollama import Client
@@ -164,18 +165,22 @@ class Chatbot:
         :param str assistant_response: The assistant's full response.
         :param list[str] known_facts: Facts already known to the bot to avoid duplicates.
         """
-        response = self.client.chat(
-            model=self.model_name,
+        messages = MessageList(
             messages=[
-                Message.system_message(content=EXTRACTOR_INSTRUCTIONS).model_dump(),
                 Message.user_message(
                     get_extraction_prompt(
                         user_input=user_input,
                         assistant_response=assistant_response,
                         known_facts=known_facts,
                     )
-                ).model_dump(),
+                )
             ],
+            system_message=Message.system_message(content=EXTRACTOR_INSTRUCTIONS),
+            max_history=2,
+        )
+        response = self.client.chat(
+            model=self.model_name,
+            messages=messages.history_dump,
             stream=False,
             format=ExtractedFacts.model_json_schema(),
             options={"temperature": self.fact_retrieval_temperature, "num_predict": 200},
@@ -213,6 +218,15 @@ class Chatbot:
         logger.info("[%s] Retrieved %d relevant facts for observation.", self.label, len(facts))
         return "\n\nRelevant things you know about the user:\n" + "\n".join(f"- {fact}" for fact in facts)
 
+    @staticmethod
+    def _get_current_time_block() -> str:
+        """Return a formatted string with the current time for system prompt injection.
+
+        :return: Formatted time block string.
+        :rtype: str
+        """
+        return f"\n\nCurrent time: {datetime.now(UTC).strftime('%H:%M')} UTC."
+
     def _get_augmented_system_message(self, memory_block: str) -> Message:
         """Return a copy of the system message with the memory block appended.
 
@@ -221,54 +235,28 @@ class Chatbot:
         :rtype: Message
         """
         augmented_system = self.messages.system_message.model_copy()
-        augmented_system.content += memory_block
+        augmented_system.content += self._get_current_time_block()
+        if memory_block:
+            augmented_system.content += memory_block
         return augmented_system
 
-    def _build_observation_context(self, time_of_day: str, minutes_at_desk: int, minutes_since_interaction: int) -> str:
+    def _build_observation_context(self, minutes_at_desk: int, minutes_since_interaction: int) -> str:
         """Build the observation context prompt for proactive conversation.
 
-        :param str time_of_day: Current time formatted as HH:MM.
         :param int minutes_at_desk: Minutes the user has been present at the desk.
         :param int minutes_since_interaction: Minutes since the last interaction.
         :return: The observation context prompt.
         :rtype: str
         """
         return (
-            f"You are deciding whether to proactively start a conversation with the user.\n"
-            f"Current time: {time_of_day}.\n"
+            "You are proactively starting a conversation with the user.\n"
             f"User has been at their desk for approximately {minutes_at_desk} minutes.\n"
             f"It has been approximately {minutes_since_interaction} minutes since your last interaction.\n\n"
-            f"Generate a short, natural conversation opener based on this context. "
-            f"It could be an observation, a question, a comment about the time of day, "
-            f"or anything that feels organic given what you know about the user. "
-            f"Keep it brief — one or two sentences at most."
+            "Generate a short, natural conversation opener based on this context. "
+            "It could be an observation, a question, a comment about the time of day, "
+            "or anything that feels organic given what you know about the user. "
+            "Keep it brief — one or two sentences at most."
         )
-
-    def _stream_response(self, messages: list[dict]) -> Generator[str]:
-        """Stream a response from the LLM, yielding complete sentences.
-
-        :param list[dict] messages: The message history to send to the LLM.
-        :return: Generator yielding complete sentences.
-        :rtype: Generator[str]
-        """
-        stream = self.client.chat(
-            model=self.model_name,
-            messages=messages,
-            tools=self.tools,
-            stream=True,
-            options=self.llm_options,
-        )
-
-        buffer = ""
-        for chunk in stream:
-            if chunk_content := chunk.message.content:
-                for sentence, remaining in self._iter_sentences(buffer, chunk_content):
-                    buffer = remaining
-                    if sentence:
-                        yield sentence
-
-        if remainder := buffer.strip():
-            yield remainder
 
     def chat(self, user_input: str) -> Generator[str]:
         """Generate a response from the chatbot given user input.
@@ -279,19 +267,21 @@ class Chatbot:
         """
         logger.info("[%s] Sending message to chatbot...", self.label)
         try:
-            history_copy = self.messages.model_copy()
-
-            if relevant_facts := self._retrieve_relevant_facts(user_input):
-                augmented_system = self._get_augmented_system_message(self._create_memory_block(relevant_facts))
-                history_copy.system_message = augmented_system
+            relevant_facts = self._retrieve_relevant_facts(user_input=user_input)
+            memory_block = self._create_memory_block(relevant_facts) if relevant_facts else ""
+            system_message = self._get_augmented_system_message(memory_block)
 
             user_message = Message.user_message(content=user_input)
 
-            messages = [*history_copy.history_dump, user_message.model_dump()]
+            messages = MessageList(
+                messages=[*self.messages.messages, user_message],
+                system_message=system_message,
+                max_history=self.messages.max_history,
+            )
 
             stream = self.client.chat(
                 model=self.model_name,
-                messages=messages,
+                messages=messages.history_dump,
                 tools=self.tools,
                 stream=True,
                 options=self.llm_options,
@@ -326,10 +316,9 @@ class Chatbot:
                 known_facts=relevant_facts,
             )
 
-    def observe(self, time_of_day: str, minutes_at_desk: int, minutes_since_interaction: int) -> Generator[str]:
+    def observe(self, minutes_at_desk: int, minutes_since_interaction: int) -> Generator[str]:
         """Generate a proactive conversation opener based on environmental context.
 
-        :param str time_of_day: Current time formatted as HH:MM.
         :param int minutes_at_desk: Minutes the user has been present at the desk.
         :param int minutes_since_interaction: Minutes since the last interaction.
         :return: A generator yielding sentences of the proactive message.
@@ -337,25 +326,26 @@ class Chatbot:
         """
         logger.info("[%s] Generating observation...", self.label)
         try:
-            history_copy = self.messages.model_copy()
-
             observation_context = self._build_observation_context(
-                time_of_day=time_of_day,
                 minutes_at_desk=minutes_at_desk,
                 minutes_since_interaction=minutes_since_interaction,
             )
 
-            if relevant_facts := self._retrieve_relevant_facts(observation_context):
-                augmented_system = self._get_augmented_system_message(self._create_memory_block(relevant_facts))
-                history_copy.system_message = augmented_system
+            relevant_facts = self._retrieve_relevant_facts(user_input=observation_context)
+            memory_block = self._create_memory_block(relevant_facts) if relevant_facts else ""
+            system_message = self._get_augmented_system_message(memory_block)
 
             observation_message = Message.user_message(content=observation_context)
 
-            messages = [*history_copy.history_dump, observation_message.model_dump()]
+            messages = MessageList(
+                messages=[*self.messages.messages, observation_message],
+                system_message=system_message,
+                max_history=self.messages.max_history,
+            )
 
             stream = self.client.chat(
                 model=self.model_name,
-                messages=messages,
+                messages=messages.history_dump,
                 stream=True,
                 options=self.llm_options,
             )
@@ -405,6 +395,11 @@ def debug(config: BotConfig) -> None:
     )
 
     try:
+        # Make passive observation and greet user
+        for chunk in chatbot.observe(minutes_at_desk=30, minutes_since_interaction=15):
+            print(chunk, end="\n", flush=True)
+
+        # Conversation loop
         while True:
             message = str(input("User: "))
             for chunk in chatbot.chat(user_input=message):
