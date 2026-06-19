@@ -122,6 +122,9 @@ class LLMConfig(BaseModel):
     ollama_host: str = Field(..., description="URL of the Ollama server hosting the language model.")
     model_name: str = Field(..., description="Name of the language model to use for generating responses.")
     temperature: float = Field(..., description="Sampling temperature for the language model.", ge=0.1, le=2.0)
+    fact_retrieval_temperature: float = Field(
+        ..., description="Sampling temperature for fact retrieval for the language model.", ge=0.1, le=2.0
+    )
     max_context_length: int = Field(..., description="Maximum context length for the language model.")
     num_predict: int = Field(..., description="Number of predictions to generate for each input.", ge=1, le=1024)
     max_history: int = Field(

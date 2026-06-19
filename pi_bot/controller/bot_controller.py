@@ -56,6 +56,7 @@ class BotController(BaseController):
             ollama_host=config.llm.ollama_host,
             model_name=config.llm.model_name,
             temperature=config.llm.temperature,
+            fact_retrieval_temperature=config.llm.fact_retrieval_temperature,
             max_context_length=config.llm.max_context_length,
             num_predict=config.llm.num_predict,
             max_history=config.llm.max_history,

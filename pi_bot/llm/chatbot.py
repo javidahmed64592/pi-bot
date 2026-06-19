@@ -31,6 +31,7 @@ class Chatbot:
         ollama_host: str,
         model_name: str,
         temperature: float,
+        fact_retrieval_temperature: float,
         max_context_length: int,
         num_predict: int,
         max_history: int,
@@ -48,6 +49,7 @@ class Chatbot:
         :param str ollama_host: The host URL for the Ollama API.
         :param str model_name: The name of the model to use for generation.
         :param float temperature: The temperature for generation.
+        :param float fact_retrieval_temperature: The temperature for fact retrieval.
         :param int max_context_length: The maximum context length for the model.
         :param int num_predict: The number of predictions to generate.
         :param int max_history: The maximum number of messages to keep in history.
@@ -71,6 +73,7 @@ class Chatbot:
         # LLM parameters
         self.model_name = model_name
         self.temperature = temperature
+        self.fact_retrieval_temperature = fact_retrieval_temperature
         self.max_context_length = max_context_length
         self.num_predict = num_predict
 
@@ -175,7 +178,7 @@ class Chatbot:
             ],
             stream=False,
             format=ExtractedFacts.model_json_schema(),
-            options={"temperature": 0.1, "num_predict": 200},
+            options={"temperature": self.fact_retrieval_temperature, "num_predict": 200},
         )
 
         if not (response_content := response.message.content):
@@ -240,6 +243,32 @@ class Chatbot:
             f"or anything that feels organic given what you know about the user. "
             f"Keep it brief — one or two sentences at most."
         )
+
+    def _stream_response(self, messages: list[dict]) -> Generator[str]:
+        """Stream a response from the LLM, yielding complete sentences.
+
+        :param list[dict] messages: The message history to send to the LLM.
+        :return: Generator yielding complete sentences.
+        :rtype: Generator[str]
+        """
+        stream = self.client.chat(
+            model=self.model_name,
+            messages=messages,
+            tools=self.tools,
+            stream=True,
+            options=self.llm_options,
+        )
+
+        buffer = ""
+        for chunk in stream:
+            if chunk_content := chunk.message.content:
+                for sentence, remaining in self._iter_sentences(buffer, chunk_content):
+                    buffer = remaining
+                    if sentence:
+                        yield sentence
+
+        if remainder := buffer.strip():
+            yield remainder
 
     def chat(self, user_input: str) -> Generator[str]:
         """Generate a response from the chatbot given user input.
@@ -361,6 +390,7 @@ def debug(config: BotConfig) -> None:
         ollama_host=config.llm.ollama_host,
         model_name=config.llm.model_name,
         temperature=config.llm.temperature,
+        fact_retrieval_temperature=config.llm.fact_retrieval_temperature,
         max_context_length=config.llm.max_context_length,
         num_predict=config.llm.num_predict,
         max_history=config.llm.max_history,

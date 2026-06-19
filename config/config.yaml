@@ -38,6 +38,7 @@ llm:
   model_name: "llama3.2:1b-instruct-q4_K_M"
   ollama_host: "http://localhost:11434"
   temperature: 0.8
+  fact_retrieval_temperature: 0.1
   max_context_length: 4096
   num_predict: 256
   max_history: 20
