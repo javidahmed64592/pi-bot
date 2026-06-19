@@ -160,10 +160,10 @@ class ObservationProbability(BaseModel):
 class BotBehaviourConfig(BaseModel):
     """Configuration for the Pi Bot's behaviour and interaction settings."""
 
+    presence_timeout: int = Field(..., description="Seconds before going idle if no presence detected.", ge=1)
     passive_observation_interval: tuple[int, int] = Field(
         ..., description="Random time interval (in seconds) for checking passive observations."
     )
-    idle_timeout: int = Field(..., description="Seconds before going idle if no presence detected.", ge=1)
     observation_probability: ObservationProbability = Field(
         ..., description="Configuration for observation probability weighting."
     )

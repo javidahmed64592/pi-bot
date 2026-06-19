@@ -24,6 +24,9 @@ class ComponentType(StrEnum):
     MICROPHONE = auto()
     SPEAKER = auto()
 
+    # Chatbot
+    CHATBOT = auto()
+
 
 class StatusLEDType(StrEnum):
     """Enumeration of status LED types."""
@@ -48,8 +51,6 @@ class EventType(StrEnum):
     # Chatbot
     LEFT_DESK = auto()
     DECIDED_TO_OBSERVE = auto()
-    DECIDED_TO_SPEAK = auto()
-    DECIDED_TO_NOT_SPEAK = auto()
 
 
 class CommandType(StrEnum):

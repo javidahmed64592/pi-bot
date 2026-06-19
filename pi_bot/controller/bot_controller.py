@@ -5,6 +5,8 @@ import datetime
 import logging
 from enum import StrEnum, auto
 
+import numpy as np
+
 from pi_bot.actuator import BuzzerActuator, LCDActuator, LEDActuator, RGBLEDActuator
 from pi_bot.audio import MicrophoneSensor, SpeakerActuator
 from pi_bot.controller.base_controller import BaseController
@@ -21,9 +23,10 @@ from pi_bot.controller.commands import (
 )
 from pi_bot.llm.chatbot import Chatbot
 from pi_bot.models import BotConfig
-from pi_bot.protocol import Event, EventType, Payload, SpeechCapturedPayload, StatusLEDType
+from pi_bot.protocol import ComponentType, Event, EventType, Payload, SpeechCapturedPayload, StatusLEDType
 from pi_bot.sensor import PIRSensor
 
+rng = np.random.default_rng()
 logger = logging.getLogger(__name__)
 
 
@@ -66,7 +69,15 @@ class BotController(BaseController):
             tools=[],
         )
 
-        self._last_user_presence_timestamp = BotController.get_current_timestamp()
+        now = BotController.get_current_timestamp()
+
+        # Presence
+        self._last_user_presence_timestamp = now
+
+        # Observing state
+        self._last_observing_check_timestamp = now
+        self._next_observing_check_interval = self._get_observation_timer()
+        self._last_interaction_timestamp = now
 
     @staticmethod
     def get_current_timestamp() -> float:
@@ -124,6 +135,124 @@ class BotController(BaseController):
         await self._set_conversation_state(state=ConversationState.READY)
         logger.info("[BotController] All components started!")
 
+        logger.info("[BotController] Starting background tasks...")
+        self.tasks.append(asyncio.create_task(self._presence_timeout_loop()))
+        self.tasks.append(asyncio.create_task(self._observation_loop()))
+
+        logger.info("[BotController] Bot started and ready to interact!")
+
+    def _get_observation_timer(self) -> float:
+        """Get random time to wait before attempting to enter observing state."""
+        return rng.uniform(*self.config.behaviour.passive_observation_interval)
+
+    def _calculate_observation_probability(self) -> float:
+        """Calculate the probability of entering the observing state.
+
+        Formula: base + presence_bonus + interaction_bonus, capped at ceiling.
+        Presence bonus increases the longer the user has been at their desk.
+        Interaction bonus increases the longer since the last interaction.
+
+        :return: The probability of entering the observing state.
+        :rtype: float
+        """
+        cfg = self.config.behaviour.observation_probability
+        now = BotController.get_current_timestamp()
+
+        # Presence bonus — how long the user has been at the desk
+        minutes_at_desk = (now - self._last_user_presence_timestamp) / 60
+        presence_steps = min(
+            int(minutes_at_desk / cfg.presence.minutes_per_step),
+            cfg.presence.max_steps,
+        )
+        presence_bonus = presence_steps * cfg.presence.bonus_per_step
+
+        # Interaction bonus — how long since the last conversation
+        minutes_since_interaction = (now - self._last_interaction_timestamp) / 60
+        interaction_steps = min(
+            int(minutes_since_interaction / cfg.interaction.minutes_per_step),
+            cfg.interaction.max_steps,
+        )
+        interaction_bonus = interaction_steps * cfg.interaction.bonus_per_step
+
+        probability = min(cfg.base + presence_bonus + interaction_bonus, cfg.ceiling)
+
+        logger.info(
+            "[BotController] Observation probability: %.2f "
+            "(base=%.2f, presence_bonus=%.2f [%d steps], interaction_bonus=%.2f [%d steps])",
+            probability,
+            cfg.base,
+            presence_bonus,
+            presence_steps,
+            interaction_bonus,
+            interaction_steps,
+        )
+        return probability
+
+    async def _presence_timeout_loop(self) -> None:
+        """Periodically check if user has been absent and transition to SILENT."""
+        while True:
+            await asyncio.sleep(self.config.behaviour.presence_timeout)
+            if self.conversation_state != ConversationState.READY:
+                continue
+
+            if (
+                BotController.get_current_timestamp()
+                > self._last_user_presence_timestamp + self.config.behaviour.presence_timeout
+            ):
+                await self.event_queue.put(
+                    Event(
+                        component=ComponentType.CHATBOT,
+                        event_type=EventType.LEFT_DESK,
+                        payload=Payload(),
+                    )
+                )
+
+    async def _observation_loop(self) -> None:
+        """Periodically attempt to enter observing state on a random interval."""
+        while True:
+            interval = self._get_observation_timer()
+            logger.info("[BotController] Next observation check in %.0f seconds.", interval)
+            await asyncio.sleep(interval)
+
+            if self.conversation_state != ConversationState.READY:
+                continue
+
+            probability = self._calculate_observation_probability()
+            if rng.random() < probability:
+                await self.event_queue.put(
+                    Event(
+                        component=ComponentType.CHATBOT,
+                        event_type=EventType.DECIDED_TO_OBSERVE,
+                        payload=Payload(),
+                    )
+                )
+            else:
+                logger.info("[BotController] Observation check: decided not to speak (p=%.2f).", probability)
+
+    async def _run_observation(self) -> None:
+        """Collect context and generate a proactive message."""
+        now = BotController.get_current_timestamp()
+        now_dt = datetime.datetime.fromtimestamp(now, tz=datetime.UTC)
+
+        minutes_at_desk = int((now - self._last_user_presence_timestamp) / 60)
+        minutes_since_interaction = int((now - self._last_interaction_timestamp) / 60)
+
+        sentences = list(
+            self.chatbot.observe(
+                time_of_day=now_dt.strftime("%H:%M"),
+                minutes_at_desk=minutes_at_desk,
+                minutes_since_interaction=minutes_since_interaction,
+            )
+        )
+
+        if sentences:
+            await self._set_conversation_state(state=ConversationState.SPEAKING)
+            for sentence in sentences:
+                await self.send_command(create_speak_text_command(text=sentence))
+            await self.send_command(create_finish_speaking_command())
+        else:
+            await self._set_conversation_state(state=ConversationState.READY)
+
     async def _set_conversation_state(self, state: ConversationState) -> None:
         """Set the conversation state and update the LCD and RGB LED accordingly.
 
@@ -177,6 +306,7 @@ class BotController(BaseController):
                     )
                 )
                 await self.send_command(create_stop_listening_command())
+                await self._run_observation()
 
             case ConversationState.SILENT:
                 # Enter state when user leaves desk while in ready state
@@ -278,7 +408,16 @@ class BotController(BaseController):
 
             case EventType.STOPPED_SPEAKING:
                 # Go back to ready state
+                self._last_interaction_timestamp = BotController.get_current_timestamp()
                 await self._set_conversation_state(state=ConversationState.READY)
+
+            case EventType.LEFT_DESK:
+                # Go to silent state
+                await self._set_conversation_state(state=ConversationState.SILENT)
+
+            case EventType.DECIDED_TO_OBSERVE:
+                # Go to observing state
+                await self._set_conversation_state(state=ConversationState.OBSERVING)
 
     async def update(self) -> None:
         """Update the controller state and process events."""

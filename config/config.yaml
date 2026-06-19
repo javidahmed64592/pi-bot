@@ -77,21 +77,21 @@ llm:
 
 # Bot Behaviour
 behaviour:
+  presence_timeout: 900  # seconds before going idle
   passive_observation_interval: [300, 900]  # seconds for random observation checks
-  idle_timeout: 1800  # seconds before going idle
 
   # Observation probability weighting
   # Formula: base + (presence_bonus) + (interaction_bonus), capped at ceiling
   observation_probability:
     base: 0.20  # base chance
-    ceiling: 0.90  # X% maximum total probability
+    ceiling: 0.90  # maximum total probability
     presence:
       minutes_per_step: 30.0  # +bonus every X minutes at desk
-      max_steps: 4.0          # cap at X steps (steps * minutes per step = max time for full bonus)
+      max_steps: 4          # cap at X steps (steps * minutes per step = max time for full bonus)
       bonus_per_step: 0.10    # +X% per step
     interaction:
       minutes_per_step: 15.0  # +bonus every X minutes of silence
-      max_steps: 3.0          # cap at X steps (steps * minutes per step = max time for full bonus)
+      max_steps: 3          # cap at X steps (steps * minutes per step = max time for full bonus)
       bonus_per_step: 0.10    # +X% per step
 
 # Buzzer Configuration

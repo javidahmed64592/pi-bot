@@ -259,6 +259,89 @@ class Chatbot:
                 known_facts=relevant_facts,
             )
 
+    def _build_observation_context(self, time_of_day: str, minutes_at_desk: int, minutes_since_interaction: int) -> str:
+        """Build the observation context prompt for proactive conversation.
+
+        :param str time_of_day: Current time formatted as HH:MM.
+        :param int minutes_at_desk: Minutes the user has been present at the desk.
+        :param int minutes_since_interaction: Minutes since the last interaction.
+        :return: The observation context prompt.
+        :rtype: str
+        """
+        return (
+            f"You are deciding whether to proactively start a conversation with the user.\n"
+            f"Current time: {time_of_day}.\n"
+            f"User has been at their desk for approximately {minutes_at_desk} minutes.\n"
+            f"It has been approximately {minutes_since_interaction} minutes since your last interaction.\n\n"
+            f"Generate a short, natural conversation opener based on this context. "
+            f"It could be an observation, a question, a comment about the time of day, "
+            f"or anything that feels organic given what you know about the user. "
+            f"Keep it brief — one or two sentences at most."
+        )
+
+    def observe(self, time_of_day: str, minutes_at_desk: int, minutes_since_interaction: int) -> Generator[str]:
+        """Generate a proactive conversation opener based on environmental context.
+
+        :param str time_of_day: Current time formatted as HH:MM.
+        :param int minutes_at_desk: Minutes the user has been present at the desk.
+        :param int minutes_since_interaction: Minutes since the last interaction.
+        :return: A generator yielding sentences of the proactive message.
+        :rtype: Generator[str]
+        """
+        logger.info("[%s] Generating observation...", self.label)
+        try:
+            augmented_system = self.messages.system_message.model_copy()
+
+            observation_prompt = self._build_observation_context(
+                time_of_day=time_of_day,
+                minutes_at_desk=minutes_at_desk,
+                minutes_since_interaction=minutes_since_interaction,
+            )
+
+            # Inject memory the same way chat() does, using the context as the query
+            if relevant_facts := self._retrieve_relevant_facts(observation_prompt):
+                logger.info("[%s] Retrieved %d relevant facts for observation.", self.label, len(relevant_facts))
+                memory_block = "Relevant things you know about the user:\n" + "\n".join(
+                    f"- {fact}" for fact in relevant_facts
+                )
+                augmented_system.content += "\n\n" + memory_block
+
+            history_copy = self.messages.model_copy()
+            history_copy.system_message = augmented_system
+
+            stream = self.client.chat(
+                model=self.model_name,
+                messages=[
+                    *history_copy.history_dump,
+                    Message.user_message(content=observation_prompt).model_dump(),
+                ],
+                stream=True,
+                options=self.llm_options,
+            )
+
+            content = ""
+            buffer = ""
+
+            for chunk in stream:
+                if chunk_content := chunk.message.content:
+                    content += chunk_content
+                    for sentence, remaining in self._iter_sentences(buffer, chunk_content):
+                        buffer = remaining
+                        if sentence:
+                            yield sentence
+
+            if remainder := buffer.strip():
+                yield remainder
+
+            assistant_message = Message.assistant_message(content=content)
+
+        except Exception:
+            logger.exception("[%s] Error during observation generation!", self.label)
+            raise
+        else:
+            self.messages.add_message(message=assistant_message)
+            self.messages.save()
+
 
 def debug(config: BotConfig) -> None:
     """Debug the chatbot by printing the system message and a sample user input."""
