@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "pi-bot"
 version = "0.1.0"
-description = "Utilities for Pi Bot."
+description = "An Ollama-based AI companion bot with electronics integration, hosted on a Pi 5."
 readme = "README.md"
 requires-python = ">=3.13"
 license = { file = "LICENSE" }
@@ -31,6 +31,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "template-python[dev] @ git+https://github.com/javidahmed64592/template-python.git",
+]
+docs = [
+    "template-python[docs] @ git+https://github.com/javidahmed64592/template-python.git",
 ]
 
 [project.urls]
