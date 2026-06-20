@@ -23,7 +23,7 @@ from pi_bot.controller.commands import (
 )
 from pi_bot.llm.chatbot import Chatbot
 from pi_bot.models import BotConfig, LCDLineConfig, LCDMessageConfig
-from pi_bot.protocol import Event, EventType, Payload, SpeechCapturedPayload, StatusLEDType
+from pi_bot.protocol import Command, Event, EventType, Payload, SpeechCapturedPayload, StatusLEDType
 from pi_bot.sensor import PIRSensor
 
 rng = np.random.default_rng()
@@ -67,7 +67,11 @@ class BotController(BaseController):
             add_similarity_threshold=config.llm.embeddings.add_similarity_threshold,
             retrieve_similarity_threshold=config.llm.embeddings.retrieve_similarity_threshold,
             max_facts=config.llm.embeddings.max_facts,
-            tools=[self.write_message_to_lcd_tool],
+            tools=[
+                self.set_do_not_disturb_tool,
+                self.clear_do_not_disturb_tool,
+                self.write_message_to_lcd_tool,
+            ],
         )
 
         now = BotController.get_current_timestamp()
@@ -79,6 +83,10 @@ class BotController(BaseController):
         self._last_observing_check_timestamp = now
         self._next_observing_check_interval = self._get_observation_timer()
         self._last_interaction_timestamp = now
+
+        # Do not disturb (DND) state
+        self._dnd_active = False
+        self._dnd_until: float = 0.0
 
     @staticmethod
     def get_current_timestamp() -> float:
@@ -137,9 +145,21 @@ class BotController(BaseController):
         logger.info("[BotController] All components started!")
 
         logger.info("[BotController] Starting background tasks...")
+        self.tasks.append(asyncio.create_task(self._dnd_expiry_loop()))
         self.tasks.append(asyncio.create_task(self._observation_loop()))
 
         logger.info("[BotController] Bot started and ready to interact!")
+
+    async def _dnd_expiry_loop(self) -> None:
+        """Periodically check if DND mode has expired and clear it."""
+        while True:
+            await asyncio.sleep(60)
+
+            if self._dnd_active and BotController.get_current_timestamp() >= self._dnd_until:
+                logger.info("[BotController] DND mode expired, clearing...")
+                self._dnd_active = False
+                self._dnd_until = 0.0
+                await self._set_conversation_state(state=ConversationState.READY)
 
     def _get_observation_timer(self) -> float:
         """Get random time to wait before attempting to enter observing state."""
@@ -354,8 +374,8 @@ class BotController(BaseController):
         logger.info("[BotController] Handling event: %s", event.event_type)
         match event.event_type:
             case EventType.MOTION_DETECTED:
-                # Return to ready if in silent
-                if self.conversation_state == ConversationState.SILENT:
+                # Return to ready if in silent and not in DND mode
+                if self.conversation_state == ConversationState.SILENT and not self._dnd_active:
                     await self._set_conversation_state(state=ConversationState.READY)
 
                 # Update the last user presence timestamp when motion is detected
@@ -387,15 +407,45 @@ class BotController(BaseController):
                 await self.send_command(create_finish_speaking_command())
 
             case EventType.STOPPED_SPEAKING:
-                # Go back to ready state
+                # Go back to ready state if not in DND mode, otherwise go to silent state
                 self._last_interaction_timestamp = BotController.get_current_timestamp()
-                await self._set_conversation_state(state=ConversationState.READY)
+                await self._set_conversation_state(
+                    state=ConversationState.SILENT if self._dnd_active else ConversationState.READY
+                )
 
     async def update(self) -> None:
         """Update the controller state and process events."""
         await asyncio.sleep(1)
 
     # LLM tools
+    def _tool_command_handler(self, command: Command) -> None:
+        """Send a command to the appropriate actuator and track the task for completion."""
+        task = asyncio.create_task(self.send_command(command=command))
+        self.tasks.append(task)
+        task.add_done_callback(self.tasks.remove)
+
+    def set_do_not_disturb_tool(self, minutes: int) -> str:
+        """Set the bot to do not disturb (DND) mode for a specified duration.
+
+        :param int minutes: Duration in minutes for DND mode.
+        :return: Confirmation message indicating DND mode is active and its duration.
+        :rtype: str
+        """
+        self._dnd_active = True
+        self._dnd_until = BotController.get_current_timestamp() + (minutes * 60)
+        return f"Do Not Disturb mode activated for {minutes} minutes."
+
+    def clear_do_not_disturb_tool(self) -> str:
+        """Clear the do not disturb (DND) mode, allowing the bot to return to normal operation.
+
+        :return: Confirmation message indicating DND mode has been cleared.
+        :rtype: str
+        """
+        self._dnd_active = False
+        self._dnd_until = 0.0
+        self._tool_command_handler(command=self._set_conversation_state(state=ConversationState.READY))
+        return "Do Not Disturb mode cleared. Bot is now active."
+
     def write_message_to_lcd_tool(self, line_1: str, line_2: str, column_1: int, column_2: int) -> str:
         """Write a short message to the LCD display on the bot.
 
@@ -413,7 +463,5 @@ class BotController(BaseController):
             line_1=LCDLineConfig(text=line_1[:16], column=column_1),
             line_2=LCDLineConfig(text=line_2[:16], column=column_2),
         )
-        task = asyncio.create_task(self.send_command(create_write_lcd_text_command(lcd_message_config=message)))
-        self.tasks.append(task)
-        task.add_done_callback(self.tasks.remove)
+        self._tool_command_handler(command=create_write_lcd_text_command(lcd_message_config=message))
         return f"LCD updated: '{line_1}' / '{line_2}'"
