@@ -23,7 +23,7 @@ from pi_bot.controller.commands import (
 )
 from pi_bot.llm.chatbot import Chatbot
 from pi_bot.models import BotConfig, LCDLineConfig, LCDMessageConfig
-from pi_bot.protocol import Command, Event, EventType, Payload, SpeechCapturedPayload, StatusLEDType
+from pi_bot.protocol import Event, EventType, Payload, SpeechCapturedPayload, StatusLEDType
 from pi_bot.sensor import PIRSensor
 
 rng = np.random.default_rng()
@@ -418,9 +418,8 @@ class BotController(BaseController):
         await asyncio.sleep(1)
 
     # LLM tools
-    def _tool_command_handler(self, command: Command) -> None:
+    def _tool_task_handler(self, task: asyncio.Task) -> None:
         """Send a command to the appropriate actuator and track the task for completion."""
-        task = asyncio.create_task(self.send_command(command=command))
         self.tasks.append(task)
         task.add_done_callback(self.tasks.remove)
 
@@ -443,7 +442,8 @@ class BotController(BaseController):
         """
         self._dnd_active = False
         self._dnd_until = 0.0
-        self._tool_command_handler(command=self._set_conversation_state(state=ConversationState.READY))
+        task = asyncio.create_task(self._set_conversation_state(state=ConversationState.READY))
+        self._tool_task_handler(task=task)
         return "Do Not Disturb mode cleared. Bot is now active."
 
     def write_message_to_lcd_tool(self, line_1: str, line_2: str, column_1: int, column_2: int) -> str:
@@ -463,5 +463,6 @@ class BotController(BaseController):
             line_1=LCDLineConfig(text=line_1[:16], column=column_1),
             line_2=LCDLineConfig(text=line_2[:16], column=column_2),
         )
-        self._tool_command_handler(command=create_write_lcd_text_command(lcd_message_config=message))
+        task = asyncio.create_task(self.send_command(create_write_lcd_text_command(lcd_message_config=message)))
+        self._tool_task_handler(task=task)
         return f"LCD updated: '{line_1}' / '{line_2}'"
