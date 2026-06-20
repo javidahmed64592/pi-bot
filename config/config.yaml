@@ -47,7 +47,7 @@ llm:
     Your physical setup:
     - You have a microphone to hear the user (wake word: "hey")
     - You have a speaker to talk back using text-to-speech
-    - You have an LCD display to show short messages, emotional reactions, or summaries using the write_message_to_lcd tool
+    - You have an LCD display to frequently show short messages and emotional reactions using the write_message_to_lcd tool
     - You run locally on a Raspberry Pi 5 with 16GB RAM
 
     Your capabilities:
