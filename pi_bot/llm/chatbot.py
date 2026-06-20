@@ -447,6 +447,27 @@ class Chatbot:
 def debug(config: BotConfig) -> None:
     """Debug the chatbot by printing the system message and a sample user input."""
 
+    def set_do_not_disturb_tool(minutes: int) -> str:
+        """Set the bot to do not disturb (DND) mode for a specified duration.
+
+        :param int minutes: Duration in minutes for DND mode.
+        :return: Confirmation message indicating DND mode is active and its duration.
+        :rtype: str
+        """
+        response = f"Do Not Disturb mode activated for {minutes} minutes."
+        logger.info("[TOOL] %s", response)
+        return response
+
+    def clear_do_not_disturb_tool() -> str:
+        """Clear the do not disturb (DND) mode, allowing the bot to return to normal operation.
+
+        :return: Confirmation message indicating DND mode has been cleared.
+        :rtype: str
+        """
+        response = "Do Not Disturb mode cleared. Bot is now active."
+        logger.info("[TOOL] %s", response)
+        return response
+
     def write_message_to_lcd_tool(line_1: str, line_2: str) -> str:
         """Write a short message to the LCD display on the bot.
 
@@ -458,8 +479,9 @@ def debug(config: BotConfig) -> None:
         :return: Confirmation that the message was sent to the LCD.
         :rtype: str
         """
-        print(f"LCD updated: '{line_1}' / '{line_2}'")
-        return f"LCD updated: '{line_1}' / '{line_2}'"
+        response = f"LCD updated: '{line_1}' / '{line_2}'"
+        logger.info("[TOOL] %s", response)
+        return response
 
     chatbot = Chatbot(
         ollama_host=config.llm.ollama_host,
@@ -476,7 +498,11 @@ def debug(config: BotConfig) -> None:
         add_similarity_threshold=config.llm.embeddings.add_similarity_threshold,
         retrieve_similarity_threshold=config.llm.embeddings.retrieve_similarity_threshold,
         max_facts=config.llm.embeddings.max_facts,
-        tools=[write_message_to_lcd_tool],
+        tools=[
+            set_do_not_disturb_tool,
+            clear_do_not_disturb_tool,
+            write_message_to_lcd_tool,
+        ],
     )
 
     try:
