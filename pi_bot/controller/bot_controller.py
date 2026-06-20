@@ -22,7 +22,7 @@ from pi_bot.controller.commands import (
     create_write_lcd_text_command,
 )
 from pi_bot.llm.chatbot import Chatbot
-from pi_bot.models import BotConfig
+from pi_bot.models import BotConfig, LCDLineConfig, LCDMessageConfig
 from pi_bot.protocol import ComponentType, Event, EventType, Payload, SpeechCapturedPayload, StatusLEDType
 from pi_bot.sensor import PIRSensor
 
@@ -67,7 +67,7 @@ class BotController(BaseController):
             add_similarity_threshold=config.llm.embeddings.add_similarity_threshold,
             retrieve_similarity_threshold=config.llm.embeddings.retrieve_similarity_threshold,
             max_facts=config.llm.embeddings.max_facts,
-            tools=[],
+            tools=[self.write_message_to_lcd_tool],
         )
 
         now = BotController.get_current_timestamp()
@@ -420,3 +420,24 @@ class BotController(BaseController):
     async def update(self) -> None:
         """Update the controller state and process events."""
         await asyncio.sleep(1)
+
+    # LLM tools
+    def write_message_to_lcd_tool(self, line_1: str, line_2: str) -> str:
+        """Write a short message to the LCD display on the bot.
+
+        Use this when you want to show text, an emotion, or a summary visually.
+        Line 1 and line 2 are each limited to 16 characters.
+
+        :param str line_1: First line of text to display (max 16 characters).
+        :param str line_2: Second line of text to display (max 16 characters).
+        :return: Confirmation that the message was sent to the LCD.
+        :rtype: str
+        """
+        message = LCDMessageConfig(
+            line_1=LCDLineConfig(text=line_1[:16], column=0),
+            line_2=LCDLineConfig(text=line_2[:16], column=0),
+        )
+        task = asyncio.create_task(self.send_command(create_write_lcd_text_command(lcd_message_config=message)))
+        self.tasks.append(task)
+        task.add_done_callback(self.tasks.remove)
+        return f"LCD updated: '{line_1}' / '{line_2}'"
