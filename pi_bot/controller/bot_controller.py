@@ -230,6 +230,10 @@ class BotController(BaseController):
 
         :param ConversationState state: The new conversation state.
         """
+        if self.conversation_state == state:
+            logger.info("[BotController] Conversation state already set to: %s", state)
+            return
+
         logger.info("[BotController] Setting conversation state to: %s", state)
         self.conversation_state = state
         match self.conversation_state:
