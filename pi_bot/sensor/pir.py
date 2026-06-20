@@ -44,6 +44,9 @@ class PIRSensor(SensorComponent):
         super().__init__(config=config, event_queue=event_queue)
         self.pir = PIRController(label="PIR Sensor", pin=self.config.gpio.pir_pin)
         self._motion_active = False
+        self._presence_timeout = config.behaviour.presence_timeout
+        self._absence_duration = 0.0
+        self._left_desk_emitted = False
 
     @property
     def component_type(self) -> ComponentType:
@@ -56,20 +59,39 @@ class PIRSensor(SensorComponent):
 
         try:
             while self._running:
-                # Check for motion
-                if self.pir.motion_detected and not self._motion_active:
-                    await self.emit_event(
-                        Event(
-                            component=self.component_type,
-                            event_type=EventType.MOTION_DETECTED,
-                            payload=Payload(),
+                if self.pir.motion_detected:
+                    if not self._motion_active:
+                        await self.emit_event(
+                            Event(
+                                component=self.component_type,
+                                event_type=EventType.MOTION_DETECTED,
+                                payload=Payload(),
+                            )
                         )
-                    )
-                    self._motion_active = True
+                        self._motion_active = True
+
+                    self._absence_duration = 0.0
+                    self._left_desk_emitted = False
+
                 else:
                     self._motion_active = False
+                    self._absence_duration += self.pir.polling_interval
 
-                # Poll at configured interval
+                    if self._absence_duration >= self._presence_timeout and not self._left_desk_emitted:
+                        logger.info(
+                            "[%s] No motion detected for %.0f seconds — emitting LEFT_DESK.",
+                            self.label,
+                            self._absence_duration,
+                        )
+                        await self.emit_event(
+                            Event(
+                                component=self.component_type,
+                                event_type=EventType.LEFT_DESK,
+                                payload=Payload(),
+                            )
+                        )
+                        self._left_desk_emitted = True
+
                 await asyncio.sleep(self.pir.polling_interval)
 
         except asyncio.CancelledError:
