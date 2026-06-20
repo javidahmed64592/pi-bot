@@ -225,7 +225,7 @@ class Chatbot:
         return (
             f"\n\nThe current UTC time is exactly {now.strftime('%H:%M')} "
             f"on {now.strftime('%A, %d %B %Y')}. "
-            f"Use this time precisely when asked — do not estimate or hallucinate it."
+            f"Use this time precisely when asked - do not estimate or hallucinate it."
         )
 
     def _get_augmented_system_message(self, memory_block: str) -> Message:
@@ -256,7 +256,7 @@ class Chatbot:
             "Generate a short, natural conversation opener based on this context. "
             "It could be an observation, a question, a comment about the time of day, "
             "or anything that feels organic given what you know about the user. "
-            "Keep it brief — one or two sentences at most."
+            "Keep it brief - one or two sentences at most."
         )
 
     def chat(self, user_input: str) -> Generator[str]:

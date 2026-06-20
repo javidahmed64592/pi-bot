@@ -159,7 +159,7 @@ class BotController(BaseController):
         cfg = self.config.behaviour.observation_probability
         now = BotController.get_current_timestamp()
 
-        # Presence bonus — how long the user has been at the desk
+        # Presence bonus - how long the user has been at the desk
         minutes_at_desk = (now - self._last_user_presence_timestamp) / 60
         presence_steps = min(
             int(minutes_at_desk / cfg.presence.minutes_per_step),
@@ -167,7 +167,7 @@ class BotController(BaseController):
         )
         presence_bonus = presence_steps * cfg.presence.bonus_per_step
 
-        # Interaction bonus — how long since the last conversation
+        # Interaction bonus - how long since the last conversation
         minutes_since_interaction = (now - self._last_interaction_timestamp) / 60
         interaction_steps = min(
             int(minutes_since_interaction / cfg.interaction.minutes_per_step),

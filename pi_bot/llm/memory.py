@@ -21,12 +21,12 @@ LONG_TERM_MEMORY_FILE = DATA_DIRECTORY / "embeddings.json"
 
 EXTRACTOR_INSTRUCTIONS = (
     "You are a memory extraction assistant. Identify concrete, specific facts about the user "
-    "from their messages — likes, dislikes, habits, personal details, ongoing projects, people "
+    "from their messages - likes, dislikes, habits, personal details, ongoing projects, people "
     "or things they mention. Be willing to extract simple preference statements like 'user likes X'."
 )
 EXTRACTION_PROMPT = (
     "Extract specific, personal facts about the user from the following conversation exchange. "
-    "Only extract clear, factual statements about the user — not assumptions, opinions, or general topics discussed. "
+    "Only extract clear, factual statements about the user - not assumptions, opinions, or general topics discussed. "
     "Do not extract facts solely from the assistant's response if the user input does not provide additional context. "
     "Examples of facts worth extracting: preferences, habits, life details, things they own, people they mention, "
     "plans they have.\n\n"
@@ -267,7 +267,7 @@ def get_extraction_prompt(user_input: str, assistant_response: str, known_facts:
     """
     known_block = (
         "Facts already known about the user (do NOT extract these again, even if reworded, "
-        "elaborated on, or described from a different angle — if the new information is just "
+        "elaborated on, or described from a different angle - if the new information is just "
         "a different way of describing something already known, skip it):\n"
         + "\n".join(f"- {fact}" for fact in known_facts)
         + "\n\n"
