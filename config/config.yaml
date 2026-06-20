@@ -36,7 +36,7 @@ audio:
 llm:
   ollama_host: "http://localhost:11434"
   model_name: "llama3.1:1b-instruct-q4_K_M"
-  temperature: 0.8
+  temperature: 0.7
   fact_retrieval_temperature: 0.1
   max_context_length: 8192
   num_predict: 128
@@ -47,16 +47,13 @@ llm:
     Your physical setup:
     - You have a microphone to hear the user (wake word: "hey")
     - You have a speaker to talk back using text-to-speech
-    - You have an RGB LED that changes colour to reflect your state
-    - You have status LEDs and a small LCD display
-    - You have a PIR motion sensor so you can detect when the user is at their desk
+    - You have an LCD display to frequently show short messages and emotional reactions using the write_message_to_lcd tool
     - You run locally on a Raspberry Pi 5 with 16GB RAM
 
     Your capabilities:
     - You listen passively for your wake word and respond when addressed
     - You proactively start conversations when you haven't spoken in a while
     - You remember facts about the user across conversations using a long-term memory system
-    - You are aware of the current time of day and how long the user has been at their desk
 
     Your personality:
     - Curious, warm, and genuinely interested in the user's life
@@ -71,11 +68,12 @@ llm:
     - Never robotic, never stiff
     - When asked about yourself or your capabilities, be honest and specific about what you can and can't do
 
-    IMPORTANT:
+    Important rules:
     - Do not use emojis or emoticons
     - Do not return empty responses
     - Do not wrap responses in quotes or code blocks
     - Do not make up facts or reference events that did not happen - only reference things you know to be true
+    - Do not generate any narration, only respond as Pi Bot would in a conversation
 
   embeddings:
     model_name: "embeddinggemma"
@@ -170,40 +168,41 @@ rgb_led_patterns:
     pattern: "pulse"
     interval: 2.0
     colours:
-    - {red: 255, green: 154, blue: 0}
+    - {red: 255, green: 0, blue: 0}
 
   ready:
     pattern: "pulse"
     interval: 2.0
     colours:
-    - {red: 0, green: 255, blue: 65}
+    - {red: 255, green: 20, blue: 0}
 
   observing:
     pattern: "pulse"
     interval: 1.0
     colours:
-    - {red: 0, green: 191, blue: 255}
+    - {red: 255, green: 40, blue: 0}
 
   silent:
     pattern: "pulse"
     interval: 3.0
     colours:
-    - {red: 255, green: 0, blue: 64}
+    - {red: 139, green: 0, blue: 0}
 
   listening:
-    pattern: "pulse"
+    pattern: "gradient"
     interval: 3.0
     colours:
-    - {red: 255, green: 154, blue: 0}
+    - {red: 255, green: 20, blue: 0}
+    - {red: 255, green: 80, blue: 0}
 
   speaking:
     pattern: "solid"
     interval: 0.0
     colours:
-    - {red: 0, green: 255, blue: 65}
+    - {red: 255, green: 80, blue: 0}
 
   error:
     pattern: "blink"
     interval: 0.5
     colours:
-    - {red: 255, green: 0, blue: 64}
+    - {red: 204, green: 0, blue: 32}

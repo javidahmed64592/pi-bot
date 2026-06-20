@@ -6,7 +6,6 @@ import logging
 import re
 from collections.abc import Callable, Generator, Sequence
 from datetime import UTC, datetime
-from typing import Any
 
 from ollama import Client
 from pydantic import ValidationError
@@ -43,7 +42,7 @@ class Chatbot:
         add_similarity_threshold: float,
         retrieve_similarity_threshold: float,
         max_facts: int,
-        tools: list[Callable[[Any], str]],
+        tools: list[Callable[..., str]],
     ) -> None:
         """Initialize the chatbot with the given parameters.
 
@@ -61,7 +60,7 @@ class Chatbot:
         :param float add_similarity_threshold: The similarity threshold for adding new facts to avoid duplicates.
         :param float retrieve_similarity_threshold: The similarity threshold for retrieving facts.
         :param int max_facts: The maximum number of facts to retrieve.
-        :param list[Callable[[Any], str]] tools: A list of tool functions that the chatbot can use.
+        :param list[Callable[..., str]] tools: A list of tool functions that the chatbot can use.
         """
         if "localhost" in ollama_host:
             logger.info("[%s] Using LOCAL Ollama host.", self.label)
@@ -111,6 +110,17 @@ class Chatbot:
             "num_predict": self.num_predict,
         }
 
+    @property
+    def host_reachable(self) -> bool:
+        """Check if the Ollama host is reachable."""
+        try:
+            self.client.list()
+        except Exception:
+            logger.exception("[%s] Ollama host is not reachable.", self.label)
+            return False
+        else:
+            return True
+
     @staticmethod
     def _iter_sentences(buffer: str, chunk: str) -> Generator[tuple[str, str]]:
         """Append chunk to buffer and yield (sentence, updated_buffer) for each complete sentence.
@@ -126,6 +136,16 @@ class Chatbot:
             if sentence := sentence.strip():
                 yield sentence, parts[-1]
         yield "", parts[-1]
+
+    def _check_host_reachable(self) -> None:
+        """Raise ConnectionError if the Ollama host is not reachable.
+
+        :raises ConnectionError: If the Ollama host cannot be reached.
+        """
+        if not self.host_reachable:
+            error_msg = f"[{self.label}] Ollama host is not reachable."
+            logger.error(error_msg)
+            raise ConnectionError(error_msg)
 
     def _embed(self, inputs: list[str]) -> Sequence[Sequence[float]]:
         """Generate embeddings for a list of texts.
@@ -259,39 +279,36 @@ class Chatbot:
             "Keep it brief - one or two sentences at most."
         )
 
-    def chat(self, user_input: str) -> Generator[str]:
-        """Generate a response from the chatbot given user input.
+    def _stream_with_tools(self, messages: list[dict]) -> Generator[str]:
+        """Stream a response, handling tool calls transparently.
 
-        :param str user_input: The user input to send to the chatbot.
-        :return: A generator yielding chunks of the chatbot's response.
+        Executes any tool calls the model makes, feeds results back, then
+        continues streaming the final response.
+
+        :param list[dict] messages: Message history to send.
+        :return: Generator yielding complete sentences.
         :rtype: Generator[str]
         """
-        logger.info("[%s] Sending message to chatbot...", self.label)
-        try:
-            relevant_facts = self._retrieve_relevant_facts(user_input=user_input)
-            memory_block = self._create_memory_block(relevant_facts) if relevant_facts else ""
-            system_message = self._get_augmented_system_message(memory_block)
+        current_messages = list(messages)
 
-            user_message = Message.user_message(content=user_input)
-
-            messages = MessageList(
-                messages=[*self.messages.messages, user_message],
-                system_message=system_message,
-                max_history=self.messages.max_history,
-            )
-
+        while True:
             stream = self.client.chat(
                 model=self.model_name,
-                messages=messages.history_dump,
-                tools=self.tools,
+                messages=current_messages,
+                tools=self.tools or None,
                 stream=True,
                 options=self.llm_options,
             )
 
             content = ""
             buffer = ""
+            tool_calls = []
 
             for chunk in stream:
+                # Accumulate tool calls if the model is calling a tool
+                if chunk.message.tool_calls:
+                    tool_calls.extend(chunk.message.tool_calls)
+
                 if chunk_content := chunk.message.content:
                     content += chunk_content
                     for sentence, remaining in self._iter_sentences(buffer, chunk_content):
@@ -302,6 +319,73 @@ class Chatbot:
             if remainder := buffer.strip():
                 yield remainder
 
+            # If no tool calls were made, we're done
+            if not tool_calls:
+                return
+
+            # Execute tool calls and build tool result messages
+            logger.info("[%s] Model requested %d tool call(s).", self.label, len(tool_calls))
+            current_messages.append(
+                {
+                    "role": "assistant",
+                    "content": content,
+                    "tool_calls": [tc.model_dump() for tc in tool_calls],
+                }
+            )
+
+            for tool_call in tool_calls:
+                tool_name = tool_call.function.name
+                tool_args = tool_call.function.arguments
+
+                # Find and execute the matching tool
+                tool_fn = next(
+                    (t for t in self.tools if getattr(t, "__name__", None) == tool_name),
+                    None,
+                )
+
+                if tool_fn is None:
+                    logger.warning("[%s] Unknown tool called: %s", self.label, tool_name)
+                    result = f"Error: tool '{tool_name}' not found."
+                else:
+                    try:
+                        result = tool_fn(**tool_args)
+                        logger.info("[%s] Tool '%s' returned: %s", self.label, tool_name, result)
+                    except Exception:
+                        logger.exception("[%s] Tool '%s' raised an exception.", self.label, tool_name)
+                        result = f"Error executing tool '{tool_name}'."
+
+                current_messages.append(
+                    {
+                        "role": "tool",
+                        "content": result,
+                    }
+                )
+
+            # Loop back to let the model generate its final response
+
+    def chat(self, user_input: str) -> Generator[str]:
+        """Generate a response from the chatbot given user input."""
+        self._check_host_reachable()
+
+        logger.info("[%s] Sending message to chatbot...", self.label)
+        try:
+            relevant_facts = self._retrieve_relevant_facts(user_input=user_input)
+            memory_block = self._create_memory_block(relevant_facts) if relevant_facts else ""
+            system_message = self._get_augmented_system_message(memory_block)
+
+            user_message = Message.user_message(content=user_input)
+            messages = MessageList(
+                messages=[*self.messages.messages, user_message],
+                system_message=system_message,
+                max_history=self.messages.max_history,
+            )
+
+            sentences: list[str] = []
+            for sentence in self._stream_with_tools(messages.history_dump):
+                sentences.append(sentence)
+                yield sentence
+
+            content = " ".join(sentences)
             assistant_message = Message.assistant_message(content=content)
         except Exception:
             logger.exception("[%s] Error during chat generation!", self.label)
@@ -310,7 +394,6 @@ class Chatbot:
             self.messages.add_message(message=user_message)
             self.messages.add_message(message=assistant_message)
             self.messages.save()
-
             self._extract_and_store_facts(
                 user_input=user_input,
                 assistant_response=content,
@@ -325,7 +408,10 @@ class Chatbot:
         :return: A generator yielding sentences of the proactive message.
         :rtype: Generator[str]
         """
+        self._check_host_reachable()
+
         logger.info("[%s] Generating observation...", self.label)
+
         try:
             observation_context = self._build_observation_context(
                 minutes_at_desk=minutes_at_desk,
@@ -337,36 +423,19 @@ class Chatbot:
             system_message = self._get_augmented_system_message(memory_block)
 
             observation_message = Message.user_message(content=observation_context)
-
             messages = MessageList(
                 messages=[*self.messages.messages, observation_message],
                 system_message=system_message,
                 max_history=self.messages.max_history,
             )
 
-            stream = self.client.chat(
-                model=self.model_name,
-                messages=messages.history_dump,
-                stream=True,
-                options=self.llm_options,
-            )
+            sentences: list[str] = []
+            for sentence in self._stream_with_tools(messages.history_dump):
+                sentences.append(sentence)
+                yield sentence
 
-            content = ""
-            buffer = ""
-
-            for chunk in stream:
-                if chunk_content := chunk.message.content:
-                    content += chunk_content
-                    for sentence, remaining in self._iter_sentences(buffer, chunk_content):
-                        buffer = remaining
-                        if sentence:
-                            yield sentence
-
-            if remainder := buffer.strip():
-                yield remainder
-
+            content = " ".join(sentences)
             assistant_message = Message.assistant_message(content=content)
-
         except Exception:
             logger.exception("[%s] Error during observation generation!", self.label)
             raise
@@ -377,6 +446,21 @@ class Chatbot:
 
 def debug(config: BotConfig) -> None:
     """Debug the chatbot by printing the system message and a sample user input."""
+
+    def write_message_to_lcd_tool(line_1: str, line_2: str) -> str:
+        """Write a short message to the LCD display on the bot.
+
+        Use this when you want to show text, an emotion, or a summary visually.
+        Line 1 and line 2 are each limited to 16 characters.
+
+        :param str line_1: First line of text to display (max 16 characters).
+        :param str line_2: Second line of text to display (max 16 characters).
+        :return: Confirmation that the message was sent to the LCD.
+        :rtype: str
+        """
+        print(f"LCD updated: '{line_1}' / '{line_2}'")
+        return f"LCD updated: '{line_1}' / '{line_2}'"
+
     chatbot = Chatbot(
         ollama_host=config.llm.ollama_host,
         model_name=config.llm.model_name,
@@ -392,7 +476,7 @@ def debug(config: BotConfig) -> None:
         add_similarity_threshold=config.llm.embeddings.add_similarity_threshold,
         retrieve_similarity_threshold=config.llm.embeddings.retrieve_similarity_threshold,
         max_facts=config.llm.embeddings.max_facts,
-        tools=[],
+        tools=[write_message_to_lcd_tool],
     )
 
     try:

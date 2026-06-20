@@ -80,6 +80,25 @@ class RGBLEDController:
             background=True,
         )
 
+    def _gradient(self, interval: float, colours: list[RGBColour]) -> None:
+        """Simulate a gradient pattern between two colours.
+
+        :param float interval: The time in seconds for one full cycle.
+        :param list[RGBColour] colours: A list of two RGB colours to alternate between.
+        """
+        if len(colours) != 2:  # noqa: PLR2004
+            error_msg = "Gradient pattern requires exactly two colours."
+            logger.error("[%s] %s", self.label, error_msg)
+            raise ValueError(error_msg)
+
+        self.led.pulse(
+            fade_in_time=interval / 2,
+            fade_out_time=interval / 2,
+            on_color=self._normalise_colour(colours[0]),
+            off_color=self._normalise_colour(colours[1]),
+            background=True,
+        )
+
     def apply_pattern(self, pattern_config: RGBLEDPatternConfig) -> None:
         """Apply the specified LED pattern based on the configuration.
 
@@ -99,6 +118,9 @@ class RGBLEDController:
             case LEDPattern.BLINK:
                 logger.info("[%s] Applying LED pattern: BLINK", self.label)
                 self._blink(interval=pattern_config.interval, colour=pattern_config.colours[0])
+            case LEDPattern.GRADIENT:
+                logger.info("[%s] Applying LED pattern: GRADIENT", self.label)
+                self._gradient(interval=pattern_config.interval, colours=pattern_config.colours)
             case _:
                 error_msg = f"Unsupported LED pattern: {pattern_config.pattern}"
                 logger.error("[%s] %s", self.label, error_msg)

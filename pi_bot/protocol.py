@@ -40,6 +40,7 @@ class EventType(StrEnum):
 
     # PIR
     MOTION_DETECTED = auto()
+    LEFT_DESK = auto()
 
     # Microphone
     WAKE_WORD_DETECTED = auto()
@@ -47,10 +48,6 @@ class EventType(StrEnum):
 
     # Speaker
     STOPPED_SPEAKING = auto()
-
-    # Chatbot
-    LEFT_DESK = auto()
-    DECIDED_TO_OBSERVE = auto()
 
 
 class CommandType(StrEnum):
