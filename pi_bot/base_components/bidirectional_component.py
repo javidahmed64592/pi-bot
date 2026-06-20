@@ -1,0 +1,97 @@
+"""Base component for bidirectional controllers (both send events and receive commands)."""
+
+import asyncio
+import logging
+from abc import ABC, abstractmethod
+from collections.abc import Coroutine
+from typing import Any
+
+from pi_bot.models import BotConfig
+from pi_bot.protocol import Command, ComponentType, Event
+
+logger = logging.getLogger(__name__)
+
+
+class BidirectionalComponent(ABC):
+    """Base class for bidirectional components that both receive commands and emit events."""
+
+    def __init__(self, config: BotConfig, event_queue: asyncio.Queue) -> None:
+        """Initialize the bidirectional component.
+
+        :param BotConfig config: The bot configuration.
+        :param asyncio.Queue event_queue: Queue for emitting events.
+        """
+        self.config = config
+        self.command_queue = asyncio.Queue()
+        self.event_queue = event_queue
+        self._running = False
+
+    @property
+    def label(self) -> str:
+        """Get a human-readable label for the component."""
+        return self.__class__.__name__
+
+    @property
+    @abstractmethod
+    def component_type(self) -> ComponentType:
+        """Get the component type this component handles."""
+        pass
+
+    async def emit_event(self, event: Event) -> None:
+        """Emit an event to the shared event queue.
+
+        :param Event event: The event to emit.
+        """
+        await self.event_queue.put(event)
+        logger.debug("[%s] Emitted event: %s", self.label, event.event_type)
+
+    @abstractmethod
+    async def handle_command(self, command: Command) -> None:
+        """Handle a command for the component.
+
+        :param Command command: The command to handle.
+        """
+        pass
+
+    def extra_tasks(self) -> list[Coroutine[Any, Any, None]]:
+        """Return additional coroutines to run concurrently alongside the command loop.
+
+        Override in subclasses to add component-specific background tasks.
+        """
+        return []
+
+    async def _command_loop(self) -> None:
+        """Process commands from the command queue."""
+        while self._running:
+            try:
+                command: Command = await self.command_queue.get()
+                logger.debug("[%s] Processing command: %s", self.label, command.command_type)
+                await self.handle_command(command=command)
+                self.command_queue.task_done()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("[%s] Error processing command!", self.label)
+
+    async def run(self) -> None:
+        """Run the component's command processing loop and any extra tasks concurrently."""
+        self._running = True
+        logger.info("[%s] Starting command processing loop...", self.label)
+
+        tasks = [asyncio.create_task(self._command_loop())] + [asyncio.create_task(coro) for coro in self.extra_tasks()]
+
+        try:
+            await asyncio.gather(*tasks)
+        except asyncio.CancelledError:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
+        finally:
+            self._running = False
+            logger.info("[%s] Command processing loop stopped.", self.label)
+
+    def stop(self) -> None:
+        """Signal the component to stop processing commands."""
+        logger.info("[%s] Stop signal received.", self.label)
+        self._running = False

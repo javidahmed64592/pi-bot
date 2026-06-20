@@ -1,0 +1,134 @@
+"""Event and command protocol definitions for the bot."""
+
+from enum import StrEnum, auto
+
+from pydantic import BaseModel, Field
+
+from pi_bot.models import LCDMessageConfig, LEDPatternConfig, MusicalNoteConfig, RGBLEDPatternConfig
+
+
+# Types
+class ComponentType(StrEnum):
+    """Enumeration of component types for the bot."""
+
+    # Actuators
+    STATUS_LED = auto()
+    RGB_LED = auto()
+    BUZZER = auto()
+    LCD = auto()
+
+    # Sensors
+    PIR = auto()
+
+    # Audio
+    MICROPHONE = auto()
+    SPEAKER = auto()
+
+    # Chatbot
+    CHATBOT = auto()
+
+
+class StatusLEDType(StrEnum):
+    """Enumeration of status LED types."""
+
+    GREEN = auto()
+    RED = auto()
+
+
+class EventType(StrEnum):
+    """Enumeration of event types emitted by sensors."""
+
+    # PIR
+    MOTION_DETECTED = auto()
+
+    # Microphone
+    WAKE_WORD_DETECTED = auto()
+    SPEECH_CAPTURED = auto()
+
+    # Speaker
+    STOPPED_SPEAKING = auto()
+
+    # Chatbot
+    LEFT_DESK = auto()
+    DECIDED_TO_OBSERVE = auto()
+
+
+class CommandType(StrEnum):
+    """Enumeration of command types sent to actuators."""
+
+    # LED
+    SET_LED_PATTERN = auto()
+
+    # Buzzer
+    PLAY_TUNE = auto()
+
+    # LCD
+    WRITE_LCD_TEXT = auto()
+
+    # Microphone
+    START_LISTENING = auto()
+    START_TRANSCRIPTION = auto()
+    STOP_LISTENING = auto()
+
+    # Speaker
+    SPEAK_TEXT = auto()
+    FINISH_SPEAKING = auto()
+
+
+# Base classes
+class Payload(BaseModel):
+    """Base class for event and command payloads."""
+
+
+class Event(BaseModel):
+    """Model for events emitted by sensors."""
+
+    component: ComponentType = Field(..., description="The component that emitted the event.")
+    event_type: EventType = Field(..., description="The type of event emitted.")
+    payload: Payload = Field(..., description="The payload of the event.")
+
+
+class Command(BaseModel):
+    """Model for commands sent to actuators."""
+
+    component: ComponentType = Field(..., description="The component that the command is for.")
+    command_type: CommandType = Field(..., description="The type of command to execute.")
+    payload: Payload = Field(..., description="The payload of the command.")
+
+
+# Payloads
+class SpeechCapturedPayload(Payload):
+    """Payload for speech captured events."""
+
+    transcribed_text: str = Field(..., description="The transcribed text from the captured speech.")
+
+
+class SetLEDPatternPayload(Payload):
+    """Payload for LED pattern commands."""
+
+    pattern_config: LEDPatternConfig = Field(..., description="The configuration for the LED pattern to apply.")
+    on_led_type: StatusLEDType = Field(..., description="The type of LED to turn on (GREEN or RED).")
+
+
+class SetRGBLEDPatternPayload(Payload):
+    """Payload for RGB LED pattern commands."""
+
+    pattern_config: RGBLEDPatternConfig = Field(..., description="The configuration for the RGB LED pattern to apply.")
+
+
+class PlayTunePayload(Payload):
+    """Payload for playing a musical tune."""
+
+    tune: list[MusicalNoteConfig] = Field(..., description="The sequence of musical notes to play.")
+
+
+class WriteLCDTextPayload(Payload):
+    """Payload for writing text to the LCD display."""
+
+    message: LCDMessageConfig = Field(..., description="The message to display on the LCD.")
+
+
+class SpeakTextPayload(Payload):
+    """Payload for speaking text through the speaker."""
+
+    text: str = Field(..., description="The text to speak through the speaker.")

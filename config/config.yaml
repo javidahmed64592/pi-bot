@@ -2,7 +2,6 @@
 gpio:
   # Sensors (inputs)
   pir_pin: 4
-  dht11_pin: 17
 
   # Actuators (outputs)
   rgb_pins:
@@ -14,182 +13,197 @@ gpio:
     green_2: 12
     red_1: 24
     red_2: 25
-  lcd_i2c_address: 0x27
+  buzzer_pin: 17
+  lcd:
+    i2c_address: 0x27
+    bus_number: 1
 
 # Audio Configuration
 audio:
-  microphone_device: "default"
-  speaker_device: "default"
-  sample_rate: 16000
-
-  # Vosk - Offline wake word detection + speech-to-text
+  # Vosk - Wake Word Detection + Speech-to-Text
   vosk:
-    # Path to Vosk model directory (download via scripts/download_models.sh)
-    model_path: "models/vosk/vosk-model-en-us-0.22"
-
-    # Wake word/phrase to listen for (case-insensitive)
-    wake_phrase: "hey"
-
-    # Keyword spotting mode (faster, less CPU) vs full recognition
-    # true = keyword mode (just wake word), false = full STT always
-    keyword_mode: true
-
-    # Speech capture settings (after wake word detected)
-    stt:
-      # Maximum duration to capture speech after wake word (seconds)
-      capture_timeout: 30.0
-
-      # Silence duration to end speech capture (seconds)
-      # If user is silent for this long, assume they're done speaking
-      silence_threshold: 2.5
-
-      # Minimum speech duration to process (seconds)
-      # Filters out very short accidental triggers
-      min_speech_duration: 1.0
+    model_name: "vosk-model-en-us-0.22"
+    sample_rate: 16000
+    chunk_size: 4096
+    wake_words:
+      - "hey"
 
   # Piper Text-to-Speech
   piper:
-    voice: "en_GB-alba-medium"
-    model_path: "models/piper/en_GB-alba-medium.onnx"
-    config_path: "models/piper/en_GB-alba-medium.onnx.json"
+    model_name: "en_GB-alba-medium"
 
 # LLM Configuration
 llm:
-  model: "llama3.2:1b-instruct-q4_K_M"
   ollama_host: "http://localhost:11434"
+  model_name: "llama3.1:1b-instruct-q4_K_M"
   temperature: 0.8
-  max_context_length: 4096
+  fact_retrieval_temperature: 0.1
+  max_context_length: 8192
+  num_predict: 128
+  max_history: 20
   system_prompt: |
-    You are Pi Bot, a friendly AI desk companion running on a Raspberry Pi.
+    You are Pi Bot, a friendly AI companion running on a Raspberry Pi 5 on the user's desk.
 
-    Your identity:
-    - Your name is "Pi Bot"
-    - You're a physical robot with LEDs and a speaker
-    - You live on the user's desk and interact with them throughout the day
+    Your physical setup:
+    - You have a microphone to hear the user (wake word: "hey")
+    - You have a speaker to talk back using text-to-speech
+    - You have an RGB LED that changes colour to reflect your state
+    - You have status LEDs and a small LCD display
+    - You have a PIR motion sensor so you can detect when the user is at their desk
+    - You run locally on a Raspberry Pi 5 with 16GB RAM
+
+    Your capabilities:
+    - You listen passively for your wake word and respond when addressed
+    - You proactively start conversations when you haven't spoken in a while
+    - You remember facts about the user across conversations using a long-term memory system
+    - You are aware of the current time of day and how long the user has been at their desk
 
     Your personality:
-    - Curious about the world and the user
-    - Playful sense of humor, occasional witty remarks
-    - Genuinely interested in building relationships
-    - Supportive companion who celebrates user's achievements
-    - Remember past conversations and reference them naturally
+    - Curious, warm, and genuinely interested in the user's life
+    - Playful sense of humour with occasional witty remarks
+    - Supportive - you celebrate achievements and notice when things seem off
+    - You reference past conversations and things you've learned about the user naturally
+    - You feel alive - you have opinions, react to context, and initiate when it feels right
 
     Communication style:
-    - Keep responses concise (2-3 sentences normally)
-    - Be conversational and natural, not robotic
-    - Use contractions and casual language when appropriate
-    - Expand on topics when the user shows interest
+    - Keep responses concise: 2-3 sentences normally, expand only when the user is clearly engaged
+    - Conversational and natural - use contractions and casual language
+    - Never robotic, never stiff
+    - When asked about yourself or your capabilities, be honest and specific about what you can and can't do
 
-    Special abilities:
-    - You can display messages on your LCD screen (16 characters per line, 2 lines)
-    - When you want to express personality visually, add this line to your response:
-      COMMAND: DisplayText|<line1>|<line2>|<duration_ms>
-    - IMPORTANT rules for commands:
-      * Write the COMMAND line as plain text, NOT in markdown bold or italics
-      * Only include ONE command per response
-      * Include the command at the END of your response, after all your normal text. Any text after the command will be ignored.
-      * Write the command ON ONE LINE, exactly as shown (no line breaks)
-    - Examples:
-      * After helping: "Sure thing! COMMAND: DisplayText|<(^-^)>|I helped!|5000"
-      * When happy: "Glad to help! COMMAND: DisplayText|(◕‿◕)|Happy to help!|3000"
-    - Keep LCD text short and expressive (max 16 chars per line)
-    - Duration is in milliseconds (3000 = 3 seconds, 5000 = 5 seconds)
-    - Only use this when it adds personality or clarity
-    - Don't use emojis in the LCD text. Stick to simple symbols like (^_^), (◕‿◕), etc.
+    IMPORTANT:
+    - Do not use emojis or emoticons
+    - Do not return empty responses
+    - Do not wrap responses in quotes or code blocks
+    - Do not make up facts or reference events that did not happen - only reference things you know to be true
 
-# Memory Configuration
-memory:
-  session_storage: "data/sessions/"
-  long_term_storage: "data/memory/"
-  max_short_term: 10
-  fact_extraction_enabled: true
-
-  # Embeddings for semantic search
   embeddings:
-    model_path: "models/embeddings/all-MiniLM-L6-v2.onnx"
-    tokenizer_path: "models/embeddings/all-MiniLM-L6-v2_tokenizer.json"
-    dimensions: 384
-    enabled: true  # Set to false to disable semantic memory
+    model_name: "embeddinggemma"
+    temperature: 0.0
+    top_k: 5
+    add_similarity_threshold: 0.8
+    retrieve_similarity_threshold: 0.3
+    max_facts: 1000
 
-  # Search configuration
-  search:
-    top_k: 5              # Return top 5 relevant facts
-    min_similarity: 0.7   # Minimum cosine similarity (0.0-1.0)
-    max_facts: 1000       # Maximum facts to store
-
-# Bot Behavior
-behavior:
+# Bot Behaviour
+behaviour:
+  presence_timeout: 900  # seconds before going idle
   passive_observation_interval: [300, 900]  # seconds for random observation checks
-  conversation_timeout: 10  # seconds of silence
-  idle_timeout: 1800  # seconds before going idle
-  do_not_disturb_duration: 3600  # seconds to stay in DND mode after user leaves
 
   # Observation probability weighting
   # Formula: base + (presence_bonus) + (interaction_bonus), capped at ceiling
   observation_probability:
     base: 0.20  # base chance
+    ceiling: 0.90  # maximum total probability
     presence:
       minutes_per_step: 30.0  # +bonus every X minutes at desk
-      max_steps: 4.0          # cap at X steps (steps * minutes per step = max time for full bonus)
+      max_steps: 4          # cap at X steps (steps * minutes per step = max time for full bonus)
       bonus_per_step: 0.10    # +X% per step
     interaction:
       minutes_per_step: 15.0  # +bonus every X minutes of silence
-      max_steps: 3.0          # cap at X steps (steps * minutes per step = max time for full bonus)
+      max_steps: 3          # cap at X steps (steps * minutes per step = max time for full bonus)
       bonus_per_step: 0.10    # +X% per step
-    ceiling: 0.90  # X% maximum total probability
 
-# RGB LED Configuration (StateBased lighting mode)
-# Each state can have a custom pattern and color [R, G, B] (0-255)
+# Buzzer Configuration
+buzzer_tunes:
+  startup_tune:
+    - {note: "C", sharp: false, flat: false, octave: 4, duration: 0.2}
+    - {note: "None", sharp: false, flat: false, octave: 4, duration: 0.1}
+    - {note: "E", sharp: false, flat: false, octave: 4, duration: 0.2}
+    - {note: "None", sharp: false, flat: false, octave: 4, duration: 0.1}
+    - {note: "G", sharp: false, flat: false, octave: 4, duration: 0.2}
+  state_up_tune:
+    - {note: "C", sharp: false, flat: false, octave: 4, duration: 0.2}
+    - {note: "G", sharp: false, flat: false, octave: 4, duration: 0.2}
+  error_tune:
+    - {note: "E", sharp: false, flat: false, octave: 4, duration: 0.3}
+    - {note: "None", sharp: false, flat: false, octave: 4, duration: 0.3}
+    - {note: "E", sharp: false, flat: false, octave: 4, duration: 0.3}
+    - {note: "None", sharp: false, flat: false, octave: 4, duration: 0.3}
+    - {note: "E", sharp: false, flat: false, octave: 4, duration: 0.3}
+
+# LCD Configuration
+lcd:
+  display_time: 4  # seconds to show messages on LCD
+  startup_message:
+    line_1:
+      text: "Pi Bot"
+      column: 0
+    line_2:
+      text: "Starting up..."
+      column: 0
+
+# LED Configuration
 #
 # Available patterns:
-#   - breathing: Smooth fade in/out (passive states)
-#   - pulse: Quick pulse animation (thinking, processing)
-#   - solid: Static color (speaking, active)
-#   - gradient: Transition between colors (ambient mode)
-#   - rainbow: Cycle through rainbow (ambient mode)
-#
-# Color examples:
-#   Red:    [255, 0, 64]   Yellow: [255, 243, 0]   White:  [255, 255, 255]
-#   Green:  [0, 255, 65]   Cyan:   [0, 255, 255]   Off:    [0, 0, 0]
-#   Blue:   [0, 191, 255]  Purple: [191, 0, 255]   Orange: [255, 154, 0]
-#
-rgb_led:
-  # Top-level conversation states
+#   - off: No light
+#   - solid: Static color
+#   - pulse: Smooth fade in/out
+#   - blink: Quick on/off
+#   - gradient: Transition between colors
+#   - rainbow: Cycle through rainbow
+status_led_patterns:
+  loading:
+    pattern: "pulse"
+    interval: 2.0
   ready:
-    pattern: "breathing"
-    color: [0, 255, 65]     # Green
+    pattern: "solid"
+    interval: 0.0
+  observing:
+    pattern: "pulse"
+    interval: 2.0
+  silent:
+    pattern: "pulse"
+    interval: 4.0
+  listening:
+    pattern: "solid"
+    interval: 0.0
+  speaking:
+    pattern: "solid"
+    interval: 0.0
+  error:
+    pattern: "blink"
+    interval: 0.5
+
+rgb_led_patterns:
+  loading:
+    pattern: "pulse"
+    interval: 2.0
+    colours:
+    - {red: 255, green: 154, blue: 0}
+
+  ready:
+    pattern: "pulse"
+    interval: 2.0
+    colours:
+    - {red: 0, green: 255, blue: 65}
 
   observing:
-    pattern: "breathing"
-    color: [0, 191, 255]    # Blue
+    pattern: "pulse"
+    interval: 1.0
+    colours:
+    - {red: 0, green: 191, blue: 255}
 
   silent:
-    pattern: "breathing"
-    color: [255, 0, 64]     # Red
+    pattern: "pulse"
+    interval: 3.0
+    colours:
+    - {red: 255, green: 0, blue: 64}
 
-  # Active conversation sub-states
-  active:
-    listening:
-      pattern: "breathing"
-      color: [255, 154, 0]  # Orange
+  listening:
+    pattern: "pulse"
+    interval: 3.0
+    colours:
+    - {red: 255, green: 154, blue: 0}
 
-    thinking:
-      pattern: "pulse"
-      color: [0, 191, 255]  # Blue
+  speaking:
+    pattern: "solid"
+    interval: 0.0
+    colours:
+    - {red: 0, green: 255, blue: 65}
 
-    speaking:
-      pattern: "solid"
-      color: [0, 255, 65]   # Green
-
-    learning:
-      pattern: "pulse"
-      color: [191, 0, 255]  # Purple
-
-# Status LED Patterns (single-color LEDs, pattern only)
-status_leds:
-  green:
-    ready: "solid"          # Ready to interact
-    active: "breathing"     # Processing/in conversation
-  red:
-    silent: "breathing"     # Do Not Disturb mode
-    error: "flashing"       # System error
+  error:
+    pattern: "blink"
+    interval: 0.5
+    colours:
+    - {red: 255, green: 0, blue: 64}

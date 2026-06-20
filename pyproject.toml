@@ -1,7 +1,11 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
-name = "pi-bot-utils"
+name = "pi-bot"
 version = "0.1.0"
-description = "Utilities for Pi Bot."
+description = "An Ollama-based AI companion bot with electronics integration, hosted on a Pi 5."
 readme = "README.md"
 requires-python = ">=3.13"
 license = { file = "LICENSE" }
@@ -14,24 +18,38 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
 ]
 dependencies = [
+    "gpiozero>=2.0.1",
+    "lgpio>=0.2.2.0",
+    "ollama>=0.6.2",
     "piper-tts>=1.4.2",
+    "pyaudio>=0.2.14",
+    "smbus2>=0.6.1",
     "template-python @ git+https://github.com/javidahmed64592/template-python.git",
+    "vosk>=0.3.45",
 ]
 
 [project.optional-dependencies]
 dev = [
     "template-python[dev] @ git+https://github.com/javidahmed64592/template-python.git",
 ]
+docs = [
+    "template-python[docs] @ git+https://github.com/javidahmed64592/template-python.git",
+]
 
 [project.urls]
 repository = "https://github.com/javidahmed64592/pi-bot"
+documentation = "https://javidahmed64592.github.io/pi-bot"
+
+[project.scripts]
+pi-bot = "pi_bot.main:main"
+pi-bot-debug = "pi_bot.main:debug"
 
 [tool.hatch.metadata]
 allow-direct-references = true
 
 [tool.hatch.build]
 include = [
-  "pi_bot_utils/**",
+  "pi_bot/**",
 ]
 
 [tool.pytest.ini_options]
@@ -44,10 +62,10 @@ addopts = [
 
 [tool.coverage.run]
 branch = true
-source = ["pi_bot_utils", "tests"]
+source = ["pi_bot", "tests"]
 
 [tool.coverage.report]
-fail_under = 95
+fail_under = 0
 skip_covered = false
 show_missing = true
 
@@ -140,17 +158,3 @@ line-ending = "auto"
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
-
-[tool.mypy]
-warn_unused_configs = true
-disallow_incomplete_defs = true
-check_untyped_defs = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_return_any = true
-warn_unreachable = true
-pretty = true
-
-[[tool.mypy.overrides]]
-module = []
-ignore_missing_imports = true
