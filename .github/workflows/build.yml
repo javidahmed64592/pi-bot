@@ -31,7 +31,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Install system dependencies
-        run: sudo apt-get install -y portaudio19-dev
+        run: sudo apt-get install -y portaudio19-dev liblgpio-dev
 
       - uses: javidahmed64592/actions-template-python/actions/setup/setup-uv-python@main
       - uses: javidahmed64592/actions-template-python/actions/setup/install-python-core@main
