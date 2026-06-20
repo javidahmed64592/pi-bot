@@ -111,6 +111,17 @@ class Chatbot:
             "num_predict": self.num_predict,
         }
 
+    @property
+    def host_reachable(self) -> bool:
+        """Check if the Ollama host is reachable."""
+        try:
+            self.client.list()
+        except Exception:
+            logger.exception("[%s] Ollama host is not reachable.", self.label)
+            return False
+        else:
+            return True
+
     @staticmethod
     def _iter_sentences(buffer: str, chunk: str) -> Generator[tuple[str, str]]:
         """Append chunk to buffer and yield (sentence, updated_buffer) for each complete sentence.
@@ -126,6 +137,16 @@ class Chatbot:
             if sentence := sentence.strip():
                 yield sentence, parts[-1]
         yield "", parts[-1]
+
+    def _check_host_reachable(self) -> None:
+        """Raise ConnectionError if the Ollama host is not reachable.
+
+        :raises ConnectionError: If the Ollama host cannot be reached.
+        """
+        if not self.host_reachable:
+            error_msg = f"[{self.label}] Ollama host is not reachable."
+            logger.error(error_msg)
+            raise ConnectionError(error_msg)
 
     def _embed(self, inputs: list[str]) -> Sequence[Sequence[float]]:
         """Generate embeddings for a list of texts.
@@ -345,6 +366,8 @@ class Chatbot:
 
     def chat(self, user_input: str) -> Generator[str]:
         """Generate a response from the chatbot given user input."""
+        self._check_host_reachable()
+
         logger.info("[%s] Sending message to chatbot...", self.label)
         try:
             relevant_facts = self._retrieve_relevant_facts(user_input=user_input)
@@ -386,7 +409,10 @@ class Chatbot:
         :return: A generator yielding sentences of the proactive message.
         :rtype: Generator[str]
         """
+        self._check_host_reachable()
+
         logger.info("[%s] Generating observation...", self.label)
+
         try:
             observation_context = self._build_observation_context(
                 minutes_at_desk=minutes_at_desk,
@@ -398,36 +424,19 @@ class Chatbot:
             system_message = self._get_augmented_system_message(memory_block)
 
             observation_message = Message.user_message(content=observation_context)
-
             messages = MessageList(
                 messages=[*self.messages.messages, observation_message],
                 system_message=system_message,
                 max_history=self.messages.max_history,
             )
 
-            stream = self.client.chat(
-                model=self.model_name,
-                messages=messages.history_dump,
-                stream=True,
-                options=self.llm_options,
-            )
+            sentences: list[str] = []
+            for sentence in self._stream_with_tools(messages.history_dump):
+                sentences.append(sentence)
+                yield sentence
 
-            content = ""
-            buffer = ""
-
-            for chunk in stream:
-                if chunk_content := chunk.message.content:
-                    content += chunk_content
-                    for sentence, remaining in self._iter_sentences(buffer, chunk_content):
-                        buffer = remaining
-                        if sentence:
-                            yield sentence
-
-            if remainder := buffer.strip():
-                yield remainder
-
+            content = " ".join(sentences)
             assistant_message = Message.assistant_message(content=content)
-
         except Exception:
             logger.exception("[%s] Error during observation generation!", self.label)
             raise
