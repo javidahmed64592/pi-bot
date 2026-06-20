@@ -220,12 +220,13 @@ class Chatbot:
 
     @staticmethod
     def _get_current_time_block() -> str:
-        """Return a formatted string with the current time for system prompt injection.
-
-        :return: Formatted time block string.
-        :rtype: str
-        """
-        return f"\n\nCurrent time: {datetime.now(UTC).strftime('%H:%M')} UTC."
+        """Return a formatted string with the current UTC time for system prompt injection."""
+        now = datetime.now(UTC)
+        return (
+            f"\n\nThe current UTC time is exactly {now.strftime('%H:%M')} "
+            f"on {now.strftime('%A, %d %B %Y')}. "
+            f"Use this time precisely when asked — do not estimate or hallucinate it."
+        )
 
     def _get_augmented_system_message(self, memory_block: str) -> Message:
         """Return a copy of the system message with the memory block appended.
