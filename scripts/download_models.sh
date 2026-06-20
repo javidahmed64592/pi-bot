@@ -6,8 +6,6 @@
 # Usage:
 #   1. Edit config/config.yaml and set your desired models
 #   2. Run: ./scripts/download_models.sh
-#
-# Note: Ollama must be installed and running locally to download LLM models.
 
 set -eu
 
@@ -37,10 +35,8 @@ if [ ! -f "${CONFIG_FILE}" ]; then
     exit 1
 fi
 
-# Create models directory structure
 mkdir -p "${VOSK_DIR_BASE}"
 mkdir -p "${PIPER_DIR_BASE}"
-mkdir -p "${MODELS_DIR}/embeddings"
 
 echo -e "Reading configuration from: ${BLUE}${CONFIG_FILE}${NC}"
 echo -e "Vosk and Piper models will be downloaded to: ${BLUE}${MODELS_DIR}${NC}"
@@ -52,15 +48,18 @@ echo
 echo "1. Downloading Vosk Model from config"
 echo
 
-# Extract model path from config (get the active uncommented line)
-VOSK_MODEL_PATH=$(grep -E '^[[:space:]]*model_path:' "${CONFIG_FILE}" | grep 'vosk' | head -1 | sed 's/.*"\([^"]*\)".*/\1/' | sed 's|models/vosk/||')
+VOSK_MODEL=$(grep -E '^\s*model_name:' "${CONFIG_FILE}" | grep 'vosk' | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
 
-if [ -z "${VOSK_MODEL_PATH}" ]; then
-    echo -e "   ${RED}✗${NC} Could not find Vosk ${GREEN}model_path${NC} in ${BLUE}config.yaml${NC}"
+if [ -z "${VOSK_MODEL}" ]; then
+    # Fall back to finding model_name under the vosk: section
+    VOSK_MODEL=$(awk '/^audio:/,0' "${CONFIG_FILE}" | awk '/vosk:/,/piper:/' | grep 'model_name:' | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
+fi
+
+if [ -z "${VOSK_MODEL}" ]; then
+    echo -e "   ${RED}✗${NC} Could not find Vosk model_name in ${BLUE}config.yaml${NC}"
     exit 1
 fi
 
-VOSK_MODEL="${VOSK_MODEL_PATH}"
 echo -e "   Model from config: ${GREEN}${VOSK_MODEL}${NC}"
 
 VOSK_URL="https://alphacephei.com/vosk/models/${VOSK_MODEL}.zip"
@@ -77,7 +76,6 @@ else
 
     wget -O "${VOSK_ZIP}" "${VOSK_URL}" || {
         echo -e "   ${RED}✗${NC} Failed to download Vosk model"
-        echo "   "
         echo -e "   Available models: ${BLUE}https://alphacephei.com/vosk/models${NC}"
         echo -e "   Make sure the model name in ${BLUE}config.yaml${NC} is correct"
         exit 1
@@ -99,21 +97,19 @@ echo
 echo "2. Downloading Piper TTS Model from config"
 echo
 
-# Extract voice from config (find voice: line in piper section, extract quoted value)
-PIPER_VOICE=$(grep -E '^[[:space:]]*voice:' "${CONFIG_FILE}" | grep -v '^#' | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
+PIPER_VOICE=$(awk '/^audio:/,0' "${CONFIG_FILE}" | awk '/piper:/,/^[^ ]/' | grep 'model_name:' | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
 
 if [ -z "${PIPER_VOICE}" ]; then
-    echo -e "   ${RED}✗${NC} Could not find Piper voice in ${BLUE}config.yaml${NC}"
+    echo -e "   ${RED}✗${NC} Could not find Piper model_name in ${BLUE}config.yaml${NC}"
     exit 1
 fi
 
 echo -e "   Voice from config: ${GREEN}${PIPER_VOICE}${NC}"
 
-# Parse voice to construct URL (format: en_GB-alba-medium)
-LANG=$(echo "${PIPER_VOICE}" | cut -d'-' -f1)  # en_GB
-VOICE_NAME=$(echo "${PIPER_VOICE}" | cut -d'-' -f2)  # alba
-QUALITY=$(echo "${PIPER_VOICE}" | cut -d'-' -f3)  # medium
-LANG_SHORT=$(echo "${LANG}" | cut -d'_' -f1)  # en
+LANG=$(echo "${PIPER_VOICE}" | cut -d'-' -f1)
+VOICE_NAME=$(echo "${PIPER_VOICE}" | cut -d'-' -f2)
+QUALITY=$(echo "${PIPER_VOICE}" | cut -d'-' -f3)
+LANG_SHORT=$(echo "${LANG}" | cut -d'_' -f1)
 
 PIPER_BASE_URL="https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/${LANG_SHORT}/${LANG}/${VOICE_NAME}/${QUALITY}"
 PIPER_ONNX="${PIPER_DIR_BASE}/${PIPER_VOICE}.onnx"
@@ -140,110 +136,75 @@ fi
 echo
 
 # ========================================
-# Sentence Transformer Embedding Model
+# Ollama Models (LLM + Embeddings)
 # ========================================
-echo "3. Downloading Embedding Model from config"
+echo "3. Checking Ollama Models from config"
 echo
 
-# Extract embedding model path from config
-EMBEDDING_MODEL_PATH=$(grep -A 5 'embeddings:' "${CONFIG_FILE}" | grep 'model_path:' | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
-
-if [ -z "${EMBEDDING_MODEL_PATH}" ]; then
-    echo -e "   ${RED}✗${NC} Could not find embedding model_path in ${BLUE}config.yaml${NC}"
-    echo "   Skipping embedding model download"
-else
-    # Extract model name from path (e.g., "models/embeddings/all-MiniLM-L6-v2.onnx" -> "all-MiniLM-L6-v2")
-    EMBEDDINGS_MODEL=$(basename "${EMBEDDING_MODEL_PATH}" .onnx)
-    EMBEDDINGS_DIR="${MODELS_DIR}/embeddings"
-    ONNX_FILE="${PROJECT_ROOT}/${EMBEDDING_MODEL_PATH}"
-    TOKENIZER_FILE="${EMBEDDINGS_DIR}/${EMBEDDINGS_MODEL}_tokenizer.json"
-
-    echo -e "   Model from config: ${GREEN}${EMBEDDINGS_MODEL}${NC}"
-
-    if [ -f "${ONNX_FILE}" ] && [ -f "${TOKENIZER_FILE}" ]; then
-        echo -e "   ${GREEN}✓${NC} Embedding model already exists at: ${BLUE}${ONNX_FILE}${NC}"
-    else
-        echo "   Downloading ${GREEN}${EMBEDDINGS_MODEL}${NC} from Hugging Face..."
-        echo "   This model will be used for semantic memory search"
-        echo
-
-        # Download ONNX model and tokenizer using Hugging Face Hub
-        echo "   Downloading ONNX model..."
-        wget -O "${ONNX_FILE}" "https://huggingface.co/sentence-transformers/${EMBEDDINGS_MODEL}/resolve/main/onnx/model.onnx" || {
-            echo -e "   ${RED}✗${NC} Failed to download ONNX model from Hugging Face"
-            echo "   You may need to convert the model manually. See docs/MEMORY_SYSTEM.md"
-            echo "   Skipping embedding model for now..."
-            ONNX_FILE=""
-        }
-
-        if [ -n "${ONNX_FILE}" ]; then
-            echo "   Downloading tokenizer..."
-            wget -O "${TOKENIZER_FILE}" "https://huggingface.co/sentence-transformers/${EMBEDDINGS_MODEL}/resolve/main/tokenizer.json" || {
-                echo -e "   ${YELLOW}⚠${NC}  Failed to download tokenizer, trying alternative..."
-                wget -O "${TOKENIZER_FILE}" "https://huggingface.co/sentence-transformers/${EMBEDDINGS_MODEL}/resolve/main/tokenizer_config.json" || {
-                    echo -e "   ${RED}✗${NC} Failed to download tokenizer"
-                    echo "   You may need to download manually from: "
-                    echo -e "   ${BLUE}https://huggingface.co/sentence-transformers/${EMBEDDINGS_MODEL}${NC}"
-                }
-            }
-
-            echo -e "   ${GREEN}✓${NC} Embedding model installed successfully"
-            echo -e "   Model path: ${BLUE}${ONNX_FILE}${NC}"
-        fi
-    fi
-fi
-
-echo
-
-# ========================================
-# Ollama LLM Model
-# ========================================
-echo "4. Downloading Ollama LLM Model from config"
-echo
-
-# Check if Ollama is installed and running
-if ! command -v ollama &> /dev/null; then
-    echo -e "   ${RED}✗${NC} Ollama CLI not found. Please install Ollama to download LLM models."
-    echo -e "   ${BLUE}https://ollama.com/docs/installation${NC}"
-    exit 1
-fi
-
-# Extract LLM model from config
-LLM_MODEL=$(grep -E '^[[:space:]]*model:' "${CONFIG_FILE}" | grep -v '^#' | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
+OLLAMA_HOST=$(grep -E '^  ollama_host:' "${CONFIG_FILE}" | head -1 | sed 's/[^"]*"\([^"]*\)".*/\1/')
+LLM_MODEL=$(awk '/^llm:/{found=1; next} found && /^[^ ]/{exit} found && /^  model_name:/{print; exit}' "${CONFIG_FILE}" | sed 's/[^"]*"\([^"]*\)".*/\1/')
+EMBEDDINGS_MODEL=$(awk '/^  embeddings:/{found=1; next} found && /^  [^ ]/{exit} found && /^    model_name:/{print; exit}' "${CONFIG_FILE}" | sed 's/[^"]*"\([^"]*\)".*/\1/')
 
 if [ -z "${LLM_MODEL}" ]; then
-    echo -e "   ${RED}✗${NC} Could not find LLM model in ${BLUE}config.yaml${NC}"
+    echo -e "   ${RED}✗${NC} Could not find LLM model_name in ${BLUE}config.yaml${NC}"
     exit 1
 fi
 
-echo -e "   LLM model from config: ${GREEN}${LLM_MODEL}${NC}"
+if [ -z "${EMBEDDINGS_MODEL}" ]; then
+    echo -e "   ${RED}✗${NC} Could not find embeddings model_name in ${BLUE}config.yaml${NC}"
+    exit 1
+fi
 
-# Check if model is already installed in Ollama
-if ollama list | grep -q "${LLM_MODEL}"; then
-    echo -e "   ${GREEN}✓${NC} LLM model already exists in Ollama"
-else
-    echo "   Pulling LLM model from Ollama registry..."
-    ollama pull "${LLM_MODEL}" || {
-        echo -e "   ${RED}✗${NC} Failed to pull LLM model from Ollama"
-        echo -e "   Make sure the model name in ${BLUE}config.yaml${NC} is correct and that Ollama is running"
+echo -e "   Ollama host:       ${BLUE}${OLLAMA_HOST}${NC}"
+echo -e "   LLM model:         ${GREEN}${LLM_MODEL}${NC}"
+echo -e "   Embeddings model:  ${GREEN}${EMBEDDINGS_MODEL}${NC}"
+echo
+
+# Only attempt to pull if the host is localhost
+if echo "${OLLAMA_HOST}" | grep -qE '(localhost|127\.0\.0\.1)'; then
+    if ! command -v ollama &> /dev/null; then
+        echo -e "   ${RED}✗${NC} Ollama CLI not found. Please install Ollama first."
+        echo -e "   ${BLUE}https://ollama.com/docs/installation${NC}"
         exit 1
+    fi
+
+    pull_if_missing() {
+        local MODEL="$1"
+        local LABEL="$2"
+        if ollama list | grep -q "^${MODEL}"; then
+            echo -e "   ${GREEN}✓${NC} ${LABEL} model already exists: ${GREEN}${MODEL}${NC}"
+        else
+            echo -e "   Pulling ${LABEL} model: ${GREEN}${MODEL}${NC}"
+            ollama pull "${MODEL}" || {
+                echo -e "   ${RED}✗${NC} Failed to pull ${LABEL} model: ${MODEL}"
+                exit 1
+            }
+            echo -e "   ${GREEN}✓${NC} ${LABEL} model pulled successfully"
+        fi
     }
-    echo -e "   ${GREEN}✓${NC} LLM model pulled successfully"
+
+    pull_if_missing "${LLM_MODEL}" "LLM"
+    pull_if_missing "${EMBEDDINGS_MODEL}" "Embeddings"
+else
+    echo -e "   ${YELLOW}⚠${NC}  Ollama host is remote (${BLUE}${OLLAMA_HOST}${NC}) - skipping model download."
+    echo "   Please ensure the following models are available on the remote host:"
+    echo -e "     LLM:        ${GREEN}ollama pull ${LLM_MODEL}${NC}"
+    echo -e "     Embeddings: ${GREEN}ollama pull ${EMBEDDINGS_MODEL}${NC}"
 fi
 
 # ========================================
 # Summary
 # ========================================
 echo
-echo ${SEPARATOR}
-echo -e "${GREEN}✓${NC} Downloads complete!"
-echo ${SEPARATOR}
+echo "${SEPARATOR}"
+echo -e "${GREEN}✓${NC} Setup complete!"
+echo "${SEPARATOR}"
 echo
 echo "Models:"
 echo -e "  Vosk:       ${GREEN}${VOSK_MODEL}${NC}"
 echo -e "  Piper:      ${GREEN}${PIPER_VOICE}${NC}"
-echo -e "  Embeddings: ${GREEN}${EMBEDDINGS_MODEL}${NC} (ONNX)"
 echo -e "  LLM:        ${GREEN}${LLM_MODEL}${NC}"
+echo -e "  Embeddings: ${GREEN}${EMBEDDINGS_MODEL}${NC}"
 echo
-echo "You can now run the system with:"
-echo -e "  ${GREEN}cargo run --bin runner${NC}"
+echo "You can now run the bot with:"
+echo -e "  ${GREEN}uv run pi-bot${NC}"
