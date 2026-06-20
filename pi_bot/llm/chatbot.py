@@ -6,7 +6,6 @@ import logging
 import re
 from collections.abc import Callable, Generator, Sequence
 from datetime import UTC, datetime
-from typing import Any
 
 from ollama import Client
 from pydantic import ValidationError
@@ -43,7 +42,7 @@ class Chatbot:
         add_similarity_threshold: float,
         retrieve_similarity_threshold: float,
         max_facts: int,
-        tools: list[Callable[[Any], str]],
+        tools: list[Callable[..., str]],
     ) -> None:
         """Initialize the chatbot with the given parameters.
 
@@ -61,7 +60,7 @@ class Chatbot:
         :param float add_similarity_threshold: The similarity threshold for adding new facts to avoid duplicates.
         :param float retrieve_similarity_threshold: The similarity threshold for retrieving facts.
         :param int max_facts: The maximum number of facts to retrieve.
-        :param list[Callable[[Any], str]] tools: A list of tool functions that the chatbot can use.
+        :param list[Callable[..., str]] tools: A list of tool functions that the chatbot can use.
         """
         if "localhost" in ollama_host:
             logger.info("[%s] Using LOCAL Ollama host.", self.label)
@@ -340,7 +339,7 @@ class Chatbot:
 
                 # Find and execute the matching tool
                 tool_fn = next(
-                    (t for t in self.tools if t.__name__ == tool_name),
+                    (t for t in self.tools if getattr(t, "__name__", None) == tool_name),
                     None,
                 )
 
